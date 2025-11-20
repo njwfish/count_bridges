@@ -39,6 +39,7 @@ class DeconvolutionGaussianMixtureDataset(Dataset):
         dirichlet_concentration: Optional[float] = None,  # Concentration parameter for Dirichlet
         seed: int = 42,
         uniform_lambda: float = 0.0,
+        fraction_unit_level: float = 0.0,
         **kwargs  # Additional args passed to LowRankGaussianMixtureDataset
     ):
         super().__init__()
@@ -51,6 +52,7 @@ class DeconvolutionGaussianMixtureDataset(Dataset):
         self.k = k
         self.dirichlet_concentration = dirichlet_concentration
         self.uniform_lambda = uniform_lambda
+        self.fraction_unit_level = fraction_unit_level
         
         # Use low-rank variant if latent_dim is specified, otherwise use regular variant
         if latent_dim is not None:
@@ -77,7 +79,7 @@ class DeconvolutionGaussianMixtureDataset(Dataset):
         
         # Pre-compute all groups directly from mixture components
         self._pre_compute_all_groups(seed)
-        
+        self.use_unit_level_idx = np.random.randint(0, self.size, np.round(self.fraction_unit_level * self.size).astype(int))
 
             
     def _pre_compute_all_groups(self, seed: int):
@@ -153,10 +155,19 @@ class DeconvolutionGaussianMixtureDataset(Dataset):
         
         # Get pre-computed group as both x_0 and X_0
         x_0 = self.groups[idx]  # [group_size, data_dim]
-        X_0 = x_0.sum(dim=0)  # [data_dim] - sum of group members
-        
+
         # Get pre-computed one-hot vectors for each group member
         z = self.group_one_hot[idx]  # [group_size, k] - one-hot for each member
+
+
+        if idx in self.use_unit_level_idx:
+            # select random unit level idx
+            unit_level_idx = np.random.randint(0, self.group_size, 1)
+            x_1 = x_1[unit_level_idx]
+            x_0 = x_0[unit_level_idx]  # [group_size, data_dim]
+            z = z[unit_level_idx]
+            
+        X_0 = x_0.sum(dim=0)  # [data_dim] - sum of group members
         
         return {
             'x_0': x_0.float(),  # [group_size, data_dim]

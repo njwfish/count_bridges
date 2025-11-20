@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .energy_multimodal import MultimodalEnergyScoreLoss
-from .proj import rescale, randomized_round_groups_exact
+from .proj import rescale, randomized_round, randomized_round_groups_exact
 
 
 class MultimodalDeconvolutionEnergyScoreLoss(MultimodalEnergyScoreLoss):
@@ -197,7 +197,7 @@ class MultimodalDeconvolutionEnergyScoreLoss(MultimodalEnergyScoreLoss):
                 # while the rest are sampled from the model
                 result[k] = x_0[k] if k in x_0 else predictions[k]
                 if k == 'counts':
-                    result[k] = result[k].round().long()
+                    result[k] = randomized_round(result[k])
         
         return result
 

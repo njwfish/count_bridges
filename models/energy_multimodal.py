@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .energy import EnergyScoreLoss
+from .proj import randomized_round
 
 class MultimodalEnergyScoreLoss(EnergyScoreLoss):
     """
@@ -168,6 +169,6 @@ class MultimodalEnergyScoreLoss(EnergyScoreLoss):
             # while the rest are sampled from the model
             result[k] = x_0[k] if k in x_0 else predictions[k]
             if k == 'counts':
-                result[k] = result[k].round().long()
+                result[k] = randomized_round(result[k])
             
         return result

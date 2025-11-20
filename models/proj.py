@@ -65,6 +65,19 @@ def rescale(
     return y.to(x.dtype)
 
 @torch.no_grad()
+def randomized_round(
+    X: torch.Tensor
+) -> torch.Tensor:
+    """
+    Randomized rounding of a tensor.
+    """
+    X_floor = torch.floor(X)
+    X_frac = X - X_floor
+    U = torch.rand_like(X_frac, device=X.device)
+    X_int = X_floor + (X_frac > U).to(X.dtype)
+    return X_int.to(torch.long)
+
+@torch.no_grad()
 def randomized_round_groups_exact(
     X: torch.Tensor,         # [B, D] nonnegative floats, already scaled so group-sums match C
     C: torch.Tensor,         # [G, D] integer targets (exact group sums)

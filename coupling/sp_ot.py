@@ -28,8 +28,6 @@ def sparse_squared_euclidean(z0: csr_matrix, z1: csr_matrix):
     D = z0_sq[:, None] + z1_sq[None, :] - 2 * cross
     return D
 
-
-
 class OTPlanSamplerSparse:
     """OTPlanSampler implements sampling coordinates according to an OT plan (wrt squared Euclidean
     cost) with different implementations of the plan calculation."""

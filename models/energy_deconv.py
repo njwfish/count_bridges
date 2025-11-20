@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from .energy import EnergyScoreLoss
-from .proj import rescale, randomized_round_groups_exact
+from .proj import rescale, randomized_round, randomized_round_groups_exact
 
 
 class DeconvolutionEnergyScoreLoss(EnergyScoreLoss):
@@ -20,6 +20,7 @@ class DeconvolutionEnergyScoreLoss(EnergyScoreLoss):
         m_samples: int = 16,
         lambda_energy: float = 1.0,
         use_arch_projection: bool = True,
+        project_round_method: str = 'exact_randomized',
     ):
         super().__init__(
             architecture=architecture,
@@ -28,6 +29,8 @@ class DeconvolutionEnergyScoreLoss(EnergyScoreLoss):
             lambda_energy=lambda_energy,
             use_arch_projection=use_arch_projection,
         )
+        self.project_round_method = project_round_method
+        assert self.project_round_method in ['exact_randomized', 'randomized', 'round']
 
     def forward(self, inputs, eps=None):
         """
@@ -101,7 +104,7 @@ class DeconvolutionEnergyScoreLoss(EnergyScoreLoss):
             return self.conditional_sample(kwargs, S)
         else:
             prediction = self.forward(kwargs)
-            return prediction.round().long()
+            return randomized_round(prediction)
 
     @torch.no_grad()
     def conditional_sample(
@@ -153,7 +156,12 @@ class DeconvolutionEnergyScoreLoss(EnergyScoreLoss):
             return y_float
 
         # ----- 3) exact integerization across G per (B,D) -----
-        y_int = randomized_round_groups_exact(y_float, C, agg)
+        if self.project_round_method == 'exact_randomized':
+            y_int = randomized_round_groups_exact(y_float, C, agg)
+        elif self.project_round_method == 'randomized':
+            y_int = randomized_round(y_float)
+        else:
+            y_int = y_float.round().long()
         # print(y_int.float().var(dim=0))
         return y_int
 

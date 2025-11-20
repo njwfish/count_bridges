@@ -131,11 +131,21 @@ def load_experiment_data(metrics_path: Path) -> Dict[str, Any]:
         
         if 'dirichlet_concentration' in config['dataset']:
             experiment_data['dirichlet_concentration'] = config['dataset']['dirichlet_concentration']
-            
+
+        if 'fraction_unit_level' in config['dataset']:
+            experiment_data['fraction_unit_level'] = config['dataset']['fraction_unit_level']
+
+        if 'project_round_method' in config['model']:
+            experiment_data['project_round_method'] = config['model']['project_round_method']
+
+        if 'slack_sampler' in config and 'lam_p' in config['slack_sampler']:
+            experiment_data['lam_p'] = config['slack_sampler']['lam_p']
+
         return experiment_data
         
     except Exception as e:
         logger.warning(f"Could not load experiment data from {metrics_path}: {e}")
+        print(config)
         return None
 
 
@@ -230,7 +240,13 @@ def compare_methods_for_dataset(df: pd.DataFrame, output_path: str = "method_com
         config_cols.append('n_epochs')
     if 'n_steps' in df.columns:
         config_cols.append('n_steps')
-    
+    if 'project_round_method' in df.columns and not df['project_round_method'].isna().all():
+        config_cols.append('project_round_method')
+    if 'fraction_unit_level' in df.columns and not df['fraction_unit_level'].isna().all():
+        config_cols.append('fraction_unit_level')
+    if 'lam_p' in df.columns and not df['lam_p'].isna().all():
+        config_cols.append('lam_p')
+
     # Remove missing config columns
     config_cols = [col for col in config_cols if col in df.columns]
     
@@ -244,6 +260,7 @@ def compare_methods_for_dataset(df: pd.DataFrame, output_path: str = "method_com
         return
     
     # Group by unique model configurations (averaging over seeds)
+    df[config_cols] = df[config_cols].fillna('default')
     comparison_data = []
     for config_values, group_df in df.groupby(config_cols):
         result = {}
@@ -322,7 +339,7 @@ def main():
     total_experiments = sum(len(df) for df in dataset_dfs.values())
     print(f"\nFound {total_experiments} experiments across {len(dataset_dfs)} unique dataset configurations")
     
-    # Process each dataset separately
+    # Process each dataset separatel
     all_summary_files = []
     all_comparison_files = []
     
