@@ -32,62 +32,60 @@ def jsd_ct(predicted: np.ndarray, true: np.ndarray, eps: float = 1e-12):
 
     return jsd_per_ct, float(jsd_per_ct.mean())
 
-def mean_jsd(predicted: np.ndarray, true: np.ndarray):
+def per_celltype_pearson(predicted: np.ndarray, true: np.ndarray):
     """
-    Compute Jensen–Shannon divergence row-wise between two arrays 
-    of same shape and return all values and their mean.
+    Compute Pearson correlation for each cell type (column-wise).
 
     Parameters
     ----------
-    predicted : np.ndarray
-        2D array (n_rows x n_features).
-    true : np.ndarray
-        2D array of same shape as predicted.
+    predicted, true : (n_samples, n_celltypes)
 
     Returns
     -------
-    jsd_values : np.ndarray
-        Array of shape (n_rows,) with JSD values for each row.
-    jsd_mean : float
-        Mean JSD across all rows.
+    corrs : np.ndarray shape (n_celltypes,)
+    mean_corr : float
     """
-    if predicted.shape != true.shape:
-        raise ValueError("Arrays must have the same shape.")
+    n_ct = predicted.shape[1]
+    corrs = np.zeros(n_ct)
+    for i in range(n_ct):
+        x = predicted[:, i]
+        y = true[:, i]
+        if np.std(x) == 0 or np.std(y) == 0:
+            corrs[i] = 0.0
+            continue
+        corr_val, _ = pearsonr(x, y)
+        if np.isnan(corr_val):
+            corr_val = 0.0
+        corrs[i] = corr_val
+    return corrs, corrs.mean()
 
-    jsd_values = []
-    for i in range(predicted.shape[0]):
-        # normalize rows to sum to 1 (to be valid probability distributions)
-        p = predicted[i] / np.sum(predicted[i])
-        q = true[i] / np.sum(true[i])
-        jsd = jensenshannon(p, q, base=2) ** 2  # square because scipy returns sqrt(JSD)
-        jsd_values.append(jsd)
+from scipy.stats import spearmanr, pearsonr
 
-    jsd_values = np.array(jsd_values)
-    return jsd_values, jsd_values.mean()
+def per_celltype_spearman(predicted: np.ndarray, true: np.ndarray):
+    n_ct = predicted.shape[1]
+    corrs = np.zeros(n_ct)
+    for i in range(n_ct):
+        x = predicted[:, i]
+        y = true[:, i]
+        if np.all(x == x[0]) or np.all(y == y[0]):
+            corrs[i] = 0.0
+            continue
+        corr_val, _ = spearmanr(x, y)
+        if np.isnan(corr_val):
+            corr_val = 0.0
+        corrs[i] = corr_val
+    return corrs, corrs.mean()
 
-
-import numpy as np
-
-def rmse(predicted: np.ndarray, true: np.ndarray):
+def mae_per_celltype(predicted: np.ndarray, true: np.ndarray):
     """
-    Compute squared error per column, normalize by column sum,
-    then average across columns.
-
-    Parameters
-    ----------
-    predicted : np.ndarray
-        2D array (n_rows x n_cols).
-    true : np.ndarray
-        2D array of same shape.
-
-    Returns
-    -------
-    float
-        Average normalized squared error across columns.
+    Returns MAE per cell type and average.
     """
-    if predicted.shape != true.shape:
-        raise ValueError("Arrays must have the same shape.")
-    sq_err = (predicted - true) ** 2
-    col_sums = true.sum(axis=0)
-    col_scores = sq_err.sum(axis=0) / col_sums
-    return np.sqrt(col_scores.mean())
+    errors = np.abs(predicted - true).mean(axis=0)
+    return errors, errors.mean()
+
+def rmse_per_celltype(predicted: np.ndarray, true: np.ndarray):
+    errors = np.sqrt(((predicted - true)**2).mean(axis=0))
+    return errors.mean()
+def mse_per_celltype(predicted: np.ndarray, true: np.ndarray):
+    errors = ((predicted - true)**2).mean(axis=0)
+    return errors.mean()

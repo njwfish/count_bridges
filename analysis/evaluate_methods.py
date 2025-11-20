@@ -23,7 +23,14 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # Import evaluation functions
-from eval import mean_jsd, rmse, jsd_ct
+from eval_metrics import (
+    jsd_ct,
+    rmse_per_celltype,
+    per_celltype_pearson,
+    per_celltype_spearman,
+    mae_per_celltype,
+    mse_per_celltype
+)
 
 
 def load_csv_as_array(csv_path):
@@ -56,7 +63,7 @@ def main():
     if args.figs_out:
         os.makedirs(args.figs_out, exist_ok=True)
 
-    # metrics_by_method: method -> { 'k': [], 'jsd': [], 'jsd_ct': [], 'rmse': [] }
+    # metrics_by_method: method -> metric arrays aligned with ks
     metrics_by_method = {}
 
     for k in ks:
@@ -119,16 +126,38 @@ def main():
                 eval_pred = pred_array
 
             # compute metrics
-            _, jsd_mean = mean_jsd(eval_pred, eval_true)
-            _, jsd_paper_mean = jsd_ct(eval_pred, eval_true)
-            mse_val = rmse(eval_pred, eval_true)
-            print(f"Computed metrics for {method_name} at k={k}: JSD={jsd_mean}, JSD (paper)={jsd_paper_mean}, RMSE={mse_val}")
+            _, jsd_mean = jsd_ct(eval_pred, eval_true)
+            mse_val = mse_per_celltype(eval_pred, eval_true)
+            rmse_mean = rmse_per_celltype(eval_pred, eval_true)
+            _, mae_mean = mae_per_celltype(eval_pred, eval_true)
+            _, pearson_mean = per_celltype_pearson(eval_pred, eval_true)
+            _, spearman_mean = per_celltype_spearman(eval_pred, eval_true)
+            print(
+                f"Computed metrics for {method_name} at k={k}: "
+                f"JSD={jsd_mean}, MSE={mse_val}, "
+                f"RMSE={rmse_mean}, MAE={mae_mean}, "
+                f"Pearson={pearson_mean}, Spearman={spearman_mean}"
+            )
 
-            store = metrics_by_method.setdefault(method_name, {"k": [], "jsd": [], "jsd_ct": [], "rmse": []})
+            store = metrics_by_method.setdefault(
+                method_name,
+                {
+                    "k": [],
+                    "jsd": [],
+                    "mse": [],
+                    "rmse": [],
+                    "mae": [],
+                    "pearson": [],
+                    "spearman": [],
+                },
+            )
             store["k"].append(k if k is not None else " ")
             store["jsd"].append(jsd_mean)
-            store["jsd_ct"].append(jsd_paper_mean)
-            store["rmse"].append(mse_val)
+            store["mse"].append(mse_val)
+            store["rmse"].append(rmse_mean)
+            store["mae"].append(mae_mean)
+            store["pearson"].append(pearson_mean)
+            store["spearman"].append(spearman_mean)
 
     # plot three graphs: one per metric
     def _plot_metric(metric_key, title, ylabel, fname):
@@ -154,9 +183,12 @@ def main():
         plt.close()
 
     if args.figs_out:
-        _plot_metric("jsd", "JSD (Scipy) vs Number of Cell Types", "Mean JSD", "metric_jsd_scipy.png")
-        _plot_metric("jsd_ct", "JSD vs Number of Cell Types", "Mean JSD", "metric_jsd.png")
+        _plot_metric("jsd", "JSD vs Number of Cell Types", "Mean JSD", "metric_jsd.png")
+        _plot_metric("mse", "MSE vs Number of Cell Types", "Mean MSE", "metric_mse.png")
         _plot_metric("rmse", "RMSE vs Number of Cell Types", "RMSE", "metric_rmse.png")
+        _plot_metric("mae", "Per-Celltype MAE vs Number of Cell Types", "MAE (per CT)", "metric_mae.png")
+        _plot_metric("pearson", "Pearson Correlation vs Number of Cell Types", "Mean Pearson r", "metric_pearson.png")
+        _plot_metric("spearman", "Spearman Correlation vs Number of Cell Types", "Mean Spearman ρ", "metric_spearman.png")
 
         # build and save summary tables: rows=methods, columns=cell type number (k)
         def _save_summary_table(metric_key, fname):
@@ -173,8 +205,11 @@ def main():
             print(f"Saved summary table to {out_csv}")
 
         _save_summary_table("jsd", "table_jsd_scipy.csv")
-        _save_summary_table("jsd_ct", "table_jsd_paper.csv")
+        _save_summary_table("mse", "table_mse.csv")
         _save_summary_table("rmse", "table_rmse.csv")
+        _save_summary_table("mae", "table_mae.csv")
+        _save_summary_table("pearson", "table_pearson.csv")
+        _save_summary_table("spearman", "table_spearman.csv")
 
     # Print summary table to stdout
     def _print_summary_table(metric_key, title):
@@ -213,8 +248,11 @@ def main():
             print(" | ".join(str(cell).ljust(w) for cell, w in zip(row, col_widths)))
 
     _print_summary_table("jsd", "JSD (Scipy) Summary")
-    _print_summary_table("jsd_ct", "JSD (Paper) Summary") 
+    _print_summary_table("mse", "MSE Summary")
     _print_summary_table("rmse", "RMSE Summary")
+    _print_summary_table("mae", "Per-Celltype MAE Summary")
+    _print_summary_table("pearson", "Pearson Correlation Summary")
+    _print_summary_table("spearman", "Spearman Correlation Summary")
 
     # Per-celltype tables: rows=methods, columns=[JSD (paper), RMSE]
     def _print_method_summary_per_k():
@@ -227,7 +265,7 @@ def main():
         for k_val in all_ks:
             print(f"\nSummary for cell types: {k_val}")
             print("=" * 60)
-            header = ["Method", "JSD", "RMSE"]
+            header = ["Method", "JSD", "MSE", "RMSE", "MAE", "Pearson", "Spearman"]
             rows = []
             for method in methods:
                 vals = metrics_by_method[method]
@@ -235,11 +273,25 @@ def main():
                     method = 'Count Bridge'
                 if k_val in vals["k"]:
                     idx = vals["k"].index(k_val)
-                    jsd_v = vals["jsd_ct"][idx]
+                    jsd_v = vals["jsd"][idx]
                     rmse_v = vals["rmse"][idx]
-                    rows.append([method, f"{jsd_v:.3f}", f"{rmse_v:.3f}"])
+                    mse_v = vals["mse"][idx]
+                    mae_v = vals["mae"][idx]
+                    pearson_v = vals["pearson"][idx]
+                    spearman_v = vals["spearman"][idx]
+                    rows.append(
+                        [
+                            method,
+                            f"{jsd_v:.3f}",
+                            f"{mse_v:.3f}",
+                            f"{rmse_v:.3f}",
+                            f"{mae_v:.3f}",
+                            f"{pearson_v:.3f}",
+                            f"{spearman_v:.3f}",
+                        ]
+                    )
                 else:
-                    rows.append([method, "N/A", "N/A"])
+                    rows.append([method, "N/A", "N/A", "N/A", "N/A", "N/A"])
             col_widths = [max(len(str(c)) for c in col) for col in zip(*([header] + rows))]
             print(" & ".join(h.ljust(w) for h, w in zip(header, col_widths)))
             print("-" * sum(col_widths + [3 * (len(col_widths) - 1)]))
