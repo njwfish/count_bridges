@@ -46,7 +46,7 @@ class ExprBySeq:
     
     def __init__(
         self, 
-        snapfile =  "/orcd/data/omarabu/001/gokul/count_sequence/training_data/onek1k_training_data/snapatac_merged_minus2.h5ad",
+        snapfile =  "/orcd/data/omarabu/001/gokul/count_sequence/training_data/onek1k_training_data/snapatac_merged_minus3.h5ad",
         fastafile = "/orcd/data/omarabu/001/gokul/count_sequence/training_data/scooby_training_data/genome_human.fa",
         gtffile = "/orcd/data/omarabu/001/gokul/counting_flows/data/gencode.v43.annotation.gtf",
         eligible_genes_path = "/orcd/data/omarabu/001/gokul/count_sequence/training_data/onek1k_training_data/eligible_genes_nnz_by_endpoints.parquet",

@@ -1,0 +1,45 @@
+bridge:
+  _target_: bridges.torch.nobridge.NoBridge
+model:
+  _target_: models.mse.MSELoss
+  architecture: ${architecture}
+architecture:
+  _target_: architecture.scformer.SCFormerMSE
+  hidden_dim: 256
+  layers: 2
+  num_attn_layers: 2
+  num_heads: 4
+dataset:
+  _target_: datasets.exprbyseq.ExprBySeq
+  window_size: 196608
+  batch_size: 128
+  min_value: 0
+training:
+  _target_: training.Trainer
+  num_epochs: 500
+  device: ${device}
+  batch_size: 1
+  shuffle: true
+  num_workers: 12
+  print_every: 1
+  save_every: 1
+  classifier_free_guidance_prob: 0.1
+  target_sum_projection_prob: 0.1
+averaging:
+  _target_: torch.optim.swa_utils.AveragedModel
+  multi_avg_fn:
+    _target_: torch.optim.swa_utils.get_ema_multi_avg_fn
+    decay: 0.999
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 0.0002
+  weight_decay: 0.0
+device: cuda
+seed: 42
+experiment:
+  name: Sequence-to-Counts
+  version: '1.0'
+  description: Count-based flow matching with GPU bridges
+logging:
+  level: INFO
+create_plots: true
