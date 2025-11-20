@@ -109,6 +109,7 @@ def main():
     parser.add_argument("--num-celltypes", type=int, help="Total number of cell types (columns) for single run")
     parser.add_argument("--num-celltypes-list", type=str, 
                        help="Comma-separated list of cell type counts to iterate over, e.g. 5,10,15")
+    parser.add_argument("--count-bridge-version", type=str, default="new_1", help="suffix name to add after outputs")
     args = parser.parse_args()
     
     # Load original reference data
@@ -178,7 +179,7 @@ def main():
                 spot_annotations.append(all_preds[j:j + num])
                 j += num
             ctp = compute_ctp(spot_annotations, k)
-            out_path = os.path.join(args.output_dir, f"S1R1_{k}/count_bridge_new_1.csv")
+            out_path = os.path.join(args.output_dir, f"S1R1_{k}/count_bridge_{args.count_bridge_version}.csv")
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             # Create DataFrame with spot indices as row index
             df = pd.DataFrame(ctp, index=range(len(ctp)))
