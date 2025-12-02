@@ -23,15 +23,6 @@ class EnergyScoreLoss(nn.Module):
         self.lambda_energy = lambda_energy
         self.use_arch_projection = use_arch_projection
 
-    def _pairwise_dist(self, a, b, eps=1e-6):
-        """
-        Compute pairwise distances for energy score
-        a: [n, d], b: [m, d] → [n, m] of √(||a_i - b_j||² + eps)
-        """
-        diff = a.unsqueeze(1) - b.unsqueeze(0)      # [n, m, d]
-        sq   = (diff * diff).sum(-1)                # [n, m]
-        return torch.sqrt(torch.clamp(sq, min=eps))
-
     def _compute_energy_score(self, predictions, target, λ):
         """
         Compute energy score for a single modality.
