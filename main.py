@@ -16,7 +16,9 @@ from torch.utils.data import random_split
 from typing import Optional
 
 # Capture original working directory before Hydra changes it
-ORIGINAL_CWD = Path.cwd().resolve()
+import os
+ORIGINAL_CWD = Path(os.path.join(os.path.dirname(__file__))).resolve()
+print(ORIGINAL_CWD)
 
 from visualization import plot_loss_curve, plot_model_samples, save_plots
 from sample import run_sampling_evaluation

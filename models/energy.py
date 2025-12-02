@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .proj import rescale, randomized_round_groups_exact
+from .proj import rescale, randomized_round, randomized_round_groups_exact
 
 class EnergyScoreLoss(nn.Module):
     """
@@ -120,7 +120,7 @@ class EnergyScoreLoss(nn.Module):
             return self.conditional_sample(kwargs, S)
         else:
             prediction = self.forward(kwargs)
-            return prediction.round().long()
+            return randomized_round(prediction)
 
     @torch.no_grad()
     def conditional_sample(
@@ -175,5 +175,4 @@ class EnergyScoreLoss(nn.Module):
 
         # ----- 3) exact integerization across G per (B,D) -----
         y_int = randomized_round_groups_exact(y_float, C, agg)
-        # print(y_int.float().var(dim=0))
         return y_int
