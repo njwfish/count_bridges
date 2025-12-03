@@ -29,6 +29,7 @@ def rescale(
 
     B, D = x.shape
     G, B2 = A_dense.shape
+  
     assert B2 == B and C.shape == (G, D)
 
     x64 = x.to(torch.float32)

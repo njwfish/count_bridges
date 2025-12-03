@@ -1,11 +1,11 @@
 import cupy as cp
+import numpy as np
+import torch
 from typing import Callable
 from .scheduling import make_weight_schedule
 from .utils import dlpack_backend
 from cupyx.scipy.special import logsumexp
-from .sampling.prop import proportional_proj
-
-
+from counting_flows.models.proj import rescale, randomized_round_groups_exact
 
 class SkellamBridge:
     """
@@ -128,9 +128,10 @@ class SkellamBridge:
         return_trajectory: bool = False,
         return_x_hat:      bool = False,
         guidance_x_0:      cp.ndarray = None,
-        guidance_schedule: cp.ndarray = None,
+        guidance_constant: float = None,
         n_steps: int = 10,
     ):
+        
         with cp.cuda.Device(self.device):
             b = x_1.shape[0]
             x_1 = x_t = cp.from_dlpack(x_1).round().astype(cp.int32)
@@ -138,16 +139,25 @@ class SkellamBridge:
             time_points = cp.linspace(0, 1, n_steps + 1)
             
             traj, xhat_traj = [x_t], []
+
+            if guidance_x_0 is not None:
+                guidance_schedule = np.linspace(guidance_constant, 1, n_steps + 1)
+                target_sum = z['target_sum']
+                agg = torch.ones((1, guidance_x_0.shape[1]), device=self.device)
+                guidance_x_0_rescaled = rescale(guidance_x_0.squeeze(0), target_sum, agg)
+                guidance_x_0_proj = randomized_round_groups_exact(guidance_x_0_rescaled, target_sum, agg)
+
             for k in range(n_steps, 0, -1):
                 t_curr = time_points[k]
                 t_next = time_points[k-1]
                 t = cp.broadcast_to(time_points[k], (b, 1))
+    
                 x_t_dl, t_dl = dlpack_backend(x_t, t, backend=self.backend, dtype="float32")
 
                 x0_hat_t = model.sample(x_t=x_t_dl, t=t_dl, **z)
 
                 if guidance_x_0 is not None:
-                    x0_hat_t =  guidance_schedule[k] * guidance_x_0 + (1 - guidance_schedule[k]) * x0_hat_t
+                    x0_hat_t =  guidance_schedule[k] * guidance_x_0_proj + (1 - guidance_schedule[k]) * x0_hat_t
 
                 x_t, x0_hat_t = self.sample_step(t_curr, t_next, x_t, x0_hat_t, **z, return_in_backend=False)
 
