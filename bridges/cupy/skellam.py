@@ -157,7 +157,7 @@ class SkellamBridge:
                 x0_hat_t = model.sample(x_t=x_t_dl, t=t_dl, **z)
 
                 if guidance_x_0 is not None:
-                    x0_hat_t =  guidance_schedule[k] * guidance_x_0_proj + (1 - guidance_schedule[k]) * x0_hat_t
+                    x0_hat_t =  (1-guidance_schedule[k]) * guidance_x_0_proj + guidance_schedule[k] * x0_hat_t
 
                 x_t, x0_hat_t = self.sample_step(t_curr, t_next, x_t, x0_hat_t, **z, return_in_backend=False)
 
