@@ -127,7 +127,6 @@ class SkellamBridge:
         model,
         return_trajectory: bool = False,
         return_x_hat:      bool = False,
-        guidance_x_0:      cp.ndarray = None,
         guidance_constant: float = None,
         n_steps: int = 10,
     ):
@@ -140,12 +139,12 @@ class SkellamBridge:
             
             traj, xhat_traj = [x_t], []
 
-            if guidance_x_0 is not None:
+            if guidance_constant is not None:
                 guidance_schedule = np.linspace(guidance_constant, 1, n_steps + 1)
                 target_sum = z['target_sum']
-                agg = torch.ones((1, guidance_x_0.shape[1]), device=self.device)
-                guidance_x_0_rescaled = rescale(guidance_x_0.squeeze(0), target_sum, agg)
-                guidance_x_0_proj = randomized_round_groups_exact(guidance_x_0_rescaled, target_sum, agg)
+                agg = torch.ones((1, x_1.shape[1]), device=self.device)
+                x_1_rescaled = rescale(x_1.squeeze(0), target_sum, agg)
+                x_1_proj = randomized_round_groups_exact(x_1_rescaled, target_sum, agg)
 
             for k in range(n_steps, 0, -1):
                 t_curr = time_points[k]
@@ -156,8 +155,8 @@ class SkellamBridge:
 
                 x0_hat_t = model.sample(x_t=x_t_dl, t=t_dl, **z)
 
-                if guidance_x_0 is not None:
-                    x0_hat_t =  (1-guidance_schedule[n_steps-k]) * guidance_x_0_proj + guidance_schedule[n_steps-k] * x0_hat_t
+                if guidance_constant is not None:
+                    x0_hat_t =  (1-guidance_schedule[n_steps-k]) * x_1_proj + guidance_schedule[n_steps-k] * x0_hat_t
 
                 x_t, x0_hat_t = self.sample_step(t_curr, t_next, x_t, x0_hat_t, **z, return_in_backend=False)
 
