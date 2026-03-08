@@ -120,7 +120,7 @@ class SkellamBridge:
             return dlpack_backend(x_s, x0_hat_t, backend=self.backend, dtype="float32")
         return x_s, x0_hat_t
     
-    def sampler(
+    def sampler_dep(
         self,
         x_1:  cp.ndarray,
         z:   dict,
@@ -158,6 +158,45 @@ class SkellamBridge:
 
                 if guidance_constant is not None:
                     x0_hat_t =  guidance_schedule[k] * x_1_proj + (1 - guidance_schedule[k]) * x0_hat_t
+
+                x_t, x0_hat_t = self.sample_step(t_curr, t_next, x_t, x0_hat_t, **z, return_in_backend=False)
+
+                if return_trajectory: traj.append(x_t)
+                if return_x_hat:     xhat_traj.append(x0_hat_t)
+
+            outs = [x_t]
+            if return_trajectory: outs.append(cp.stack(traj))
+            if return_x_hat:      outs.append(cp.stack(xhat_traj))
+            return dlpack_backend(*outs, backend=self.backend, dtype="float32") if len(outs) > 1 else dlpack_backend(x_t, backend=self.backend, dtype="float32")[0]
+    
+    def sampler(
+        self,
+        x_1:  cp.ndarray,
+        z:   dict,
+        model,
+        return_trajectory: bool = False,
+        return_x_hat:      bool = False,
+        guidance_x_0:      cp.ndarray = None,
+        guidance_schedule: cp.ndarray = None,
+        n_steps: int = 10,
+    ):
+        with cp.cuda.Device(self.device):
+            b = x_1.shape[0]
+            x_1 = x_t = cp.from_dlpack(x_1).round().astype(cp.int32)
+
+            time_points = cp.linspace(0, 1, n_steps + 1)
+            
+            traj, xhat_traj = [x_t], []
+            for k in range(n_steps, 0, -1):
+                t_curr = time_points[k]
+                t_next = time_points[k-1]
+                t = cp.broadcast_to(time_points[k], (b, 1))
+                x_t_dl, t_dl = dlpack_backend(x_t, t, backend=self.backend, dtype="float32")
+
+                x0_hat_t = model.sample(x_t=x_t_dl, t=t_dl, **z)
+
+                if guidance_x_0 is not None:
+                    x0_hat_t =  guidance_schedule[k] * guidance_x_0 + (1 - guidance_schedule[k]) * x0_hat_t
 
                 x_t, x0_hat_t = self.sample_step(t_curr, t_next, x_t, x0_hat_t, **z, return_in_backend=False)
 
