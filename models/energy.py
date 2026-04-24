@@ -15,6 +15,7 @@ class EnergyScoreLoss(nn.Module):
         m_samples: int = 16,
         lambda_energy: float = 1.0,
         use_arch_projection: bool = True,
+        round_output: bool = True,
     ):
         super().__init__()
         self.architecture = architecture
@@ -22,6 +23,7 @@ class EnergyScoreLoss(nn.Module):
         self.m = m_samples
         self.lambda_energy = lambda_energy
         self.use_arch_projection = use_arch_projection
+        self.round_output = round_output
 
     def _compute_energy_score(self, predictions, target, λ):
         """
@@ -120,7 +122,9 @@ class EnergyScoreLoss(nn.Module):
             return self.conditional_sample(kwargs, S)
         else:
             prediction = self.forward(kwargs)
-            return randomized_round(prediction)
+            if self.round_output:
+                return randomized_round(prediction)
+            return prediction
 
     @torch.no_grad()
     def conditional_sample(

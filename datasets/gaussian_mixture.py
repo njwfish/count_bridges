@@ -220,6 +220,8 @@ class LowRankGaussianMixtureDataset(Dataset):
         projection_scale: float = 1.0,
         min_eigenvalue: float = 0.1,
         seed: int = 42,
+        continuous: bool = False,
+        diagonal_cov: bool = False,
     ):
         """
         Args:
@@ -235,6 +237,11 @@ class LowRankGaussianMixtureDataset(Dataset):
             projection_scale: Scale of random projection matrix
             min_eigenvalue: Minimum eigenvalue to ensure positive definiteness
             seed: Random seed for reproducibility
+            continuous: If True, skip integer rounding and boundary reflection so
+                samples remain a clean continuous Gaussian mixture in data space
+                (the closed-form Bayes denoiser in models/bayes.py is the exact
+                Bayes-optimal denoiser for this distribution). Default False
+                preserves the original integer count behaviour.
         """
         self.size = size
         self.data_dim = data_dim
@@ -248,7 +255,8 @@ class LowRankGaussianMixtureDataset(Dataset):
         self.projection_scale = projection_scale
         self.min_eigenvalue = min_eigenvalue
         self.seed = seed
-        
+        self.continuous = continuous
+
         if latent_dim >= data_dim:
             raise ValueError(f"latent_dim ({latent_dim}) should be < data_dim ({data_dim})")
 
@@ -262,13 +270,14 @@ class LowRankGaussianMixtureDataset(Dataset):
     def _pre_sample_all_data(self):
         """Pre-sample all source and target data at initialization"""
         # Pre-allocate tensors for all data
-        self.x0_data = torch.zeros(self.size, self.data_dim, dtype=torch.int32)
-        self.x1_data = torch.zeros(self.size, self.data_dim, dtype=torch.int32)
-        
+        out_dtype = torch.float32 if self.continuous else torch.int32
+        self.x0_data = torch.zeros(self.size, self.data_dim, dtype=out_dtype)
+        self.x1_data = torch.zeros(self.size, self.data_dim, dtype=out_dtype)
+
         # Sample mixture parameters and projection matrices
         (self.means_source, self.covs_source, self.weights_source, self.proj_source,
          self.means_target, self.covs_target, self.weights_target, self.proj_target) = self._sample_parameters()
-        
+
         # Generate all samples vectorized and track component assignments
         self.x0_data, self.x0_components = self._sample_from_low_rank_mixture(
             self.means_source, self.covs_source, self.weights_source, self.proj_source, self.size)
@@ -304,19 +313,17 @@ class LowRankGaussianMixtureDataset(Dataset):
     def _sample_latent_covariance_matrices(self):
         """Sample covariance matrices in latent space"""
         covs = torch.zeros(self.k, self.latent_dim, self.latent_dim)
-        
+
         for i in range(self.k):
             # Sample eigenvalues
             eigenvalues = torch.distributions.Exponential(1.0).sample((self.latent_dim,)) * self.cov_scale
             eigenvalues = torch.clamp(eigenvalues, min=self.min_eigenvalue)
-            
+            Lambda = torch.diag(eigenvalues)
+
             # Sample random orthogonal matrix
             Q, _ = torch.linalg.qr(torch.randn(self.latent_dim, self.latent_dim))
-            
-            # Construct covariance
-            Lambda = torch.diag(eigenvalues)
             covs[i] = Q @ Lambda @ Q.T
-        
+
         return covs
     
     def _sample_from_low_rank_mixture(self, means: torch.Tensor, covs: torch.Tensor,
@@ -357,11 +364,15 @@ class LowRankGaussianMixtureDataset(Dataset):
         # Add isotropic noise
         noise = torch.randn_like(projected_samples) * self.noise_scale
         samples = projected_samples + noise
-        
+
+        if self.continuous:
+            # Skip rounding/reflection: clean continuous Gaussian mixture in data space.
+            return samples.float(), components
+
         # Integer-ize
         samples = torch.round(samples)
         samples = self._reflect_boundaries(samples)
-        
+
         return samples.int(), components
     
     def _reflect_boundaries(self, samples: torch.Tensor) -> torch.Tensor:

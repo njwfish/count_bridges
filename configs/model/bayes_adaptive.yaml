@@ -1,0 +1,12 @@
+# Bayes-optimal denoiser for the adaptive Gaussian bridge (diagonal-cov GMM
+# Bayes via Gauss-Legendre quadrature). Closed-form (no learnable parameters).
+# Buffers populated from a checkpoint by scripts/build_bayes_checkpoint.py.
+_target_: models.bayes.BayesDenoiserGMMAdaptive
+
+k_src: ${dataset.k}
+k_tgt: ${dataset.k}
+d: ${dataset.data_dim}
+sigma: ${bridge.sigma}
+lam: ${bridge.lam}
+mode: mean
+gl_n: 128

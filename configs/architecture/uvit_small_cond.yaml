@@ -1,0 +1,10 @@
+# UViT with 10-way class conditioning (MNIST digit labels).
+_target_: architecture.uvit.UViT
+img_size: 28
+patch_size: 4
+in_chans: 1
+embed_dim: 64
+depth: 6
+num_heads: 4
+num_classes: 10
+noise_dim: 0         # set > 0 (e.g. 100) for energy-score head

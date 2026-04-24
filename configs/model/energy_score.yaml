@@ -8,3 +8,7 @@ architecture: ${architecture}
 noise_dim: 100
 m_samples: 32
 lambda_energy: 1.0
+
+# Apply randomized integer rounding to predictions at sample time.
+# Set to false for continuous-data experiments (e.g. dataset.continuous=true).
+round_output: true

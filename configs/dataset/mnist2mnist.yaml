@@ -1,0 +1,4 @@
+_target_: datasets.mnist2mnist.MNIST2MNISTDataset
+data_dir: /orcd/data/omarabu/001/njwfish/counting_flows/datasets/data/mnist
+seed: 42
+train: true

@@ -139,11 +139,12 @@ class UViT(nn.Module):
     def __init__(
         self, img_size=224, patch_size=16, in_chans=1, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4.,
         qkv_bias=False, qk_scale=None, norm_layer=nn.LayerNorm, mlp_time_embed=False, num_classes=-1,
-        use_checkpoint=False, conv=True, skip=True
+        use_checkpoint=False, conv=True, skip=True, noise_dim=0,
     ):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
         self.num_classes = num_classes
+        self.noise_dim = noise_dim
         self.in_chans = in_chans
 
         self.patch_embed = PatchEmbed(patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
@@ -155,11 +156,18 @@ class UViT(nn.Module):
             nn.Linear(4 * embed_dim, embed_dim),
         ) if mlp_time_embed else nn.Identity()
 
+        extras = 1  # time token
         if self.num_classes > 0:
             self.label_emb = nn.Embedding(self.num_classes, embed_dim)
-            self.extras = 2
-        else:
-            self.extras = 1
+            extras += 1
+        if self.noise_dim > 0:
+            self.noise_proj = nn.Sequential(
+                nn.Linear(noise_dim, embed_dim),
+                nn.GELU(),
+                nn.Linear(embed_dim, embed_dim),
+            )
+            extras += 1
+        self.extras = extras
 
         self.pos_embed = nn.Parameter(torch.zeros(1, self.extras + num_patches, embed_dim))
 
@@ -200,7 +208,7 @@ class UViT(nn.Module):
     def no_weight_decay(self):
         return {'pos_embed'}
 
-    def forward(self, x_t, t, y=None):
+    def forward(self, x_t, t, y=None, noise=None):
         x = self.patch_embed(x_t)
         B, L, D = x.shape
 
@@ -211,6 +219,9 @@ class UViT(nn.Module):
             label_emb = self.label_emb(y)
             label_emb = label_emb.unsqueeze(dim=1)
             x = torch.cat((label_emb, x), dim=1)
+        if noise is not None:
+            noise_emb = self.noise_proj(noise).unsqueeze(dim=1)
+            x = torch.cat((noise_emb, x), dim=1)
         x = x + self.pos_embed
 
         skips = []

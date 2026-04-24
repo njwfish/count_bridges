@@ -18,3 +18,8 @@ min_eigenvalue: 0.1  # minimum eigenvalue to ensure positive definiteness
 
 # Random seed for reproducibility
 seed: 42
+
+# Continuous mode: if true, skip integer rounding and boundary reflection
+# (clean Gaussian mixture in data space; required for the closed-form Bayes
+# denoiser comparisons in models/bayes.py).
+continuous: false

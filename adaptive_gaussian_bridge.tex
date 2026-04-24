@@ -1,0 +1,652 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\asinh}{\operatorname{asinh}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\diag}{\operatorname{diag}}
+
+\title{Data-Adaptive Gaussian Stochastic Interpolants \\
+  \large Bayes Decompositions, Matched Reverse Samplers, and the Robust-Coupling Geometry}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+    We study a data-adaptive family of Gaussian stochastic interpolants in
+    which the per-coordinate bridge variance is a smooth function of the
+    endpoint displacement, $\sigma^2 g(u_i) t(1-t)$ with
+    $g(u) = \sqrt{\lambda + u^2}$. Three exact decompositions explain why
+    this construction outperforms a fixed-variance Brownian bridge:
+    $(i)$~the Bayes--MSE risk decomposes into bridge-noise irreducibility,
+    coupling irreducibility, and learnable function error, with adaptive
+    $g$ reducing the first when the fixed baseline is over-noised;
+    $(ii)$~the leading-order reverse dynamics are a state-dependent
+    \emph{local-volatility} SDE with diffusion
+    $\widetilde A(x,t) = \sigma^2 \diag(\E[g(U_i)\mid X_t=x])$, so even at
+    matched average variance the integration cost re-distributes from
+    constant global noise to noise concentrated where the inferred
+    displacement is large; $(iii)$~the small-noise entropic-coupling cost
+    induced by $g$ is $c_g(u) = u^2 / (2g(u))$, robust at large $|u|$ as
+    opposed to the quadratic cost of fixed Brownian. The construction
+    supports two natural training losses (energy score, MSE), and each
+    comes with a matched reverse sampler that extracts exactly the
+    statistic the loss trains: a finite-step bridge-conditional sampler
+    for the distributional loss, and a reverse-SDE Euler step for
+    mean regression. We give closed-form Bayes denoisers in the Gaussian
+    and Gaussian-mixture cases (with quadrature for the adaptive
+    posterior), enabling oracle-vs-learned ablations that separate the
+    bridge contribution from the function-approximation contribution.
+    Empirically on a $50$-dimensional rank-$20$ integer Gaussian-mixture
+    benchmark the four matched cells (\{fixed, adaptive\} $\times$ \{MSE,
+    energy-score\}) show that the adaptive forward improves uniformly
+    across losses and discretizations, energy score prefers coarse NFE
+    while MSE prefers fine NFE, and adaptive-plus-energy-score is the
+    overall best.
+\end{abstract}
+
+\section{Setup}
+
+Consider paired data $(x_0, x_1) \in \R^d \times \R^d$ from a coupling
+$\pi(x_0, x_1)$. The interpolant framework parametrises a forward family
+of distributions on $X_t$, $t\in[0,1]$, pinned at the endpoints
+$X_{t=0}=x_0$, $X_{t=1}=x_1$. A generic Gaussian interpolant takes
+\begin{equation}
+    X_t \;=\; \alpha(t)\, x_0 + \beta(t)\, x_1 + \gamma(t, x_0, x_1)\, \varepsilon,
+    \qquad \varepsilon \sim \N(0, I_d),
+    \label{eq:interp}
+\end{equation}
+with $\alpha(0)=\beta(1)=1$, $\alpha(1)=\beta(0)=0$, and
+$\gamma$ vanishing at the endpoints. The constant choice
+$\alpha(t)=1-t$, $\beta(t)=t$, $\gamma=\sigma\sqrt{t(1-t)}$ gives the
+familiar fixed-$\sigma$ Brownian bridge. We generalise $\gamma$ to depend
+on the endpoint displacement.
+
+We train a denoiser $m_\theta(x, t)$ with one of two losses.
+\begin{itemize}
+    \item \textbf{Energy-score} on an $m$-sample predictive head,
+    \begin{equation}
+        \mathcal{L}^{\text{ES}}_\theta
+        = \E\!\left[\tfrac{1}{m}{\sum_j} \|f_\theta^{(j)}(X_t,t)-X_0\|
+          - \tfrac{\lambda_E}{2m(m-1)}{\sum_{j\ne j'}} \|f_\theta^{(j)}(X_t,t) - f_\theta^{(j')}(X_t,t)\|\right].
+        \label{eq:energy}
+    \end{equation}
+    Strictly proper: minimiser is the full conditional $X_0\mid X_t$.
+    \item \textbf{MSE},
+    \begin{equation}
+        \mathcal{L}^{\text{MSE}}_\theta = \E\!\left[\|m_\theta(X_t,t)-X_0\|^2\right].
+        \label{eq:mse}
+    \end{equation}
+    Minimiser is the conditional mean
+    $m_g(x, t) := \E[X_0\mid X_t = x]$ (the subscript $g$ marks
+    dependence on the bridge variance function).
+\end{itemize}
+We write $q(t) := t(1-t)$ throughout, and
+$A_g(u) := \sigma^2\diag(g(u_i))$ for the per-pair diagonal noise scale.
+
+\section{A data-adaptive noise schedule}
+
+Let $u_i := x_1^i - x_0^i$. We take per-dimension axis-aligned Gaussian
+bridges with
+\begin{equation}
+    \gamma_i(t,x_0,x_1)^2 \;=\; \sigma^2\, g(u_i)\, q(t),
+    \label{eq:gamma}
+\end{equation}
+with $g:\R\to\R_{>0}$ smooth, even in $u_i$, bounded below
+($g(0)>0$, so the bridge is never deterministic), and \emph{sublinear} in
+$|u_i|$ (so the bridge std $\sigma\sqrt{g(u_i)q(t)}$ grows as
+$|u_i|^{1/2}$ rather than $|u_i|$ for large displacements; relative noise
+$\mathrm{std}/|u_i| \to 0$).
+
+We fix
+\begin{equation}
+    g(u) = \sqrt{\lambda + u^2}, \qquad \lambda > 0,
+    \label{eq:g}
+\end{equation}
+which realises the desiderata minimally: $g(0)=\sqrt\lambda$ sets a
+$\lambda$-controlled floor and $g(u)\to|u|$ at large $|u|$. The
+hyperbolic reparameterisation $u=\sqrt\lambda\sinh r$ linearises
+\eqref{eq:g}: $g(u(r))=\sqrt\lambda\cosh r$, $du/dr=\sqrt\lambda\cosh r$.
+The forward process is, per coordinate,
+\begin{equation}
+    X_t^i \;=\; (1-t)\,x_0^i + t\,x_1^i + \sigma\,(\lambda + u_i^2)^{1/4}\sqrt{q(t)}\,\varepsilon^i,
+    \qquad \varepsilon^i\sim\N(0,1),
+    \label{eq:forward}
+\end{equation}
+with $\Var(X_t^i \mid x_0,x_1) = \sigma^2 \sqrt{\lambda + u_i^2}\, q(t)$.
+
+\section{Three exact decompositions of the adaptive advantage}
+\label{sec:decomp}
+
+The fixed-vs-adaptive comparison admits three separable, measurable
+decompositions: a \emph{Bayes-MSE} decomposition (\S\ref{sec:bayes-mse}),
+a \emph{reverse-SDE local-volatility} decomposition
+(\S\ref{sec:local-vol}), and an \emph{entropic-coupling cost}
+interpretation (\S\ref{sec:coupling}). Together they give the cleanest
+account of why $g$ matters.
+
+\subsection{Bayes--MSE decomposition: target variance vs function-fitting error}
+\label{sec:bayes-mse}
+
+For any model $f$,
+\begin{equation}
+    \mathcal{L}_g(f;t)
+    \;=\; \E_g\!\big[\|f(X_t,t)-X_0\|^2\big]
+    \;=\; R_g(t) \;+\; \E_g\!\big[\|f(X_t,t)-m_g(X_t,t)\|^2\big],
+    \label{eq:bias-var}
+\end{equation}
+where the irreducible Bayes risk is
+\begin{equation}
+    R_g(t) \;=\; \E_g\!\big[\tr\Var_g(X_0\mid X_t)\big].
+    \label{eq:R}
+\end{equation}
+The split is target noise ($R_g$) plus function-learning error
+($\E\|f - m_g\|^2$). Decomposing the conditional Bayes variance further
+by introducing the unobserved displacement $U$,
+\begin{equation}
+    \Var(X_0\mid X_t) \;=\; \E[\Var(X_0\mid X_t,U)\mid X_t]
+    \;+\; \Var(\E[X_0\mid X_t,U]\mid X_t),
+    \label{eq:totvar}
+\end{equation}
+and averaging over $X_t$,
+\begin{equation}
+    \boxed{
+    R_g(t) \;=\; R_g^{\text{bridge}}(t)\;+\;R_g^{\text{coupling}}(t),
+    }
+    \label{eq:R-split}
+\end{equation}
+with
+\[
+    R_g^{\text{bridge}}(t) = \E\tr\E[\Var(X_0\mid X_t,U)\mid X_t],
+    \qquad
+    R_g^{\text{coupling}}(t) = \E\tr\Var(\E[X_0\mid X_t,U]\mid X_t).
+\]
+$R_g^{\text{bridge}}$ is the irreducible noise from the bridge once the
+displacement is known; $R_g^{\text{coupling}}$ is the residual
+uncertainty from not knowing which $u$ generated $X_t$.
+
+This decomposition is the first quantity to report side-by-side for
+fixed vs adaptive. A useful sanity check (\S\ref{sec:exp}) is that in a
+symmetric Gaussian-to-Gaussian setting with matched average variance
+$a_0 = \E[\sigma^2 g(U)]$, fixed and adaptive have nearly identical
+$R_g$. The adaptive advantage there cannot be charged to $R_g$ alone --
+it must come from the integration dynamics or the learning dynamics.
+
+\paragraph{SNR as a corollary, not the explanation.} The pairwise
+log-likelihood SNR $\mathrm{SNR}^2_g(u,t) = t^2 u^2 / (q(t) \sigma^2 g(u))
+\propto u^2/g(u)$ scales as $u^2$ for fixed $g$ and as $|u|$ for adaptive
+\eqref{eq:g}; the adaptive forward compresses heterogeneity in
+pair-level SNR by a power of $|u|$. This compression is implied by
+\eqref{eq:R-split} but is not the same statement: SNR is a sufficient
+statistic for a single pair, not for the marginal regression task. The
+diagnostic $(R_g, \E\|\nabla m_g\|^2, \E\|\nabla^2 m_g\|^2)$ replaces
+SNR for assessing learnability.
+
+\subsection{Local-volatility reverse SDE: integration difficulty}
+\label{sec:local-vol}
+
+Take $\Delta = t-s\to 0$ in the bridge conditional
+\eqref{eq:cond-generic}: writing $Y_\tau$ for the reverse process in
+backward time $\tau = 1-t$,
+\begin{equation}
+    dY_\tau \;=\; b_g(Y_\tau, t)\,d\tau \;+\; \widetilde A_g(Y_\tau, t)^{1/2}\,dW_\tau,
+    \label{eq:rev-sde}
+\end{equation}
+with drift and local-volatility diffusion
+\begin{equation}
+    \boxed{
+    b_g(x, t) \;=\; \frac{m_g(x,t) - x}{t},
+    \qquad
+    \widetilde A_g(x, t) \;=\; \E_g\!\big[A_g(U)\,\big|\,X_t=x\big].
+    }
+    \label{eq:b-A}
+\end{equation}
+The drift is exactly the MSE target $m_g$ (rescaled by $1/t$), and the
+diffusion is the conditional expectation of the per-pair noise scale
+given the current state. Conditional uncertainty in $X_0$ contributes
+only at $O(\Delta^2)$ and drops out of the leading order.
+
+For fixed Brownian, $\widetilde A_g(x,t) = a_0 I$ is state-independent
+($\nabla\widetilde A = 0$). For adaptive, $\widetilde A_g(x,t)$ varies
+with $x$. Three diagnostics summarise integration difficulty:
+\[
+    Q_g(t) = \E_{\rho_t}\tr\widetilde A_g(X_t,t),
+    \quad
+    I_g(t) = \E_{\rho_t}\|\nabla_x b_g\|_F^2,
+    \quad
+    J_g(t) = \E_{\rho_t}\|\nabla_x \widetilde A_g\|_F^2.
+\]
+$Q_g$ is global noise budget; $I_g$ is drift stiffness; $J_g$ is
+state-dependence of the diffusion. Adaptive trades $J_g=0$ for $J_g>0$
+in exchange for matched local volatility, and the net effect on
+finite-NFE Euler error depends on whether the diffusion concentrates
+where it is needed (large $|u|$ inferred) and vanishes where it is not
+(small $|u|$ inferred). This is the principal mechanism by which
+adaptive can win at \emph{matched average variance}.
+
+\paragraph{Score and PF-ODE.} The exact reverse marginal score is
+\[
+    s_{t,i}(x) \;=\; \E\!\left[\frac{X_{0,i}+t U_i - x_i}{\sigma^2 g(U_i)\,q(t)}\,\bigg|\, X_t=x\right],
+\]
+an \emph{inverse-$g$-weighted} posterior residual. This is a different
+statistic from $m_g$. The probability-flow ODE drift
+$\tfrac{m_g-x}{t} - \tfrac12[\nabla\!\cdot\!\widetilde A_g + \widetilde A_g s_t]$
+requires both $m_g$ \emph{and} $s_t$; an MSE denoiser identifies only
+$m_g$. We therefore use the reverse SDE \eqref{eq:rev-sde} with the MSE
+denoiser, not a probability-flow ODE. The energy-score sampler
+(\S\ref{sec:sampler-es}) sidesteps this by using a finite-step bridge
+conditional that does not require infinitesimal-limit calculus.
+
+\subsection{Induced coupling geometry: robust entropic OT}
+\label{sec:coupling}
+
+Treat the bridge marginals as defining a small-noise reference kernel
+for an entropic OT problem between the source and target marginals.
+Take the conditional density of $X_t$ at $t = 1/2$ as a function of
+$(x_0, x_1)$ and pass to the leading $\varepsilon\to 0$ exponent: the
+adaptive bridge induces the Sinkhorn cost
+\begin{equation}
+    \boxed{
+    c_g(x_0, x_1) \;=\; \sum_i \frac{(x_1^i-x_0^i)^2}{2 g(x_1^i-x_0^i)}.
+    }
+    \label{eq:cg}
+\end{equation}
+For fixed $g(u)=g_0$, $c_{\text{fixed}}(u) = u^2/(2g_0)$ -- standard
+quadratic OT. For adaptive \eqref{eq:g},
+\begin{equation}
+    c_{\text{adapt}}(u) \;=\; \frac{u^2}{2\sqrt{\lambda + u^2}},
+    \qquad
+    c'_{\text{adapt}}(u) \;=\; \frac{u(2\lambda + u^2)}{2(\lambda+u^2)^{3/2}}
+    \;\xrightarrow{|u|\to\infty}\;\tfrac12\operatorname{sign}(u),
+    \label{eq:cgrad}
+\end{equation}
+a quadratic-near-zero, linear-at-infinity \emph{robust} cost. Large
+displacements are no longer punished quadratically; the entropic optimum
+under \eqref{eq:cg} keeps long-range pairings that quadratic OT
+suppresses. We expect this to matter on real heterogeneous coupling
+(e.g.\ when the empirical coupling has long-tail displacements).
+
+\paragraph{Caveat.} The cost \eqref{eq:cg} is non-convex for
+$|u|>\sqrt{2\lambda}$ ($c''_{\text{adapt}}<0$); finite-$\varepsilon$
+Sinkhorn is still well-defined and yields a positive coupling, but the
+limiting OT problem departs from convex quadratic OT. We do not exploit
+this in training; it is a useful interpretation of why $g$ acts as a
+\emph{coupling regulariser}.
+
+\paragraph{Path smoothness.} Conditional on $(x_0, x_1)$, $X_t$ is a
+Brownian-bridge-rough process with conditional quadratic variation
+$A_g(u)$. Adaptive does not change sample-path Hölder regularity. It
+changes \emph{conditional} quadratic variation per pair (held at $a_0$
+on average if matched) and \emph{marginal} quadratic variation across
+pairs. The smoothness gain is in $m_g$, $b_g$, $\widetilde A_g$ as
+\emph{functions of $(x,t)$}, not in individual realisations.
+
+\section{Reverse sampling: two losses, two samplers}
+\label{sec:reverse}
+
+\subsection{Bridge conditional given $u$}
+
+For $s<t$ the joint $(X_s^i, X_t^i)\mid(x_0,x_1)$ is Gaussian with
+covariance $\sigma^2 g(u_i)$ times the Brownian-bridge matrix
+$\bigl(\begin{smallmatrix} s(1-s) & s(1-t) \\ s(1-t) & t(1-t) \end{smallmatrix}\bigr)$,
+so
+\begin{equation}
+    X_s^i \mid X_t^i, x_0, x_1
+    \;\sim\; \N\!\Big(\tfrac{t-s}{t}\, x_0^i + \tfrac{s}{t}\, X_t^i,\;
+    \sigma^2 g(u_i)\,\tfrac{s(t-s)}{t}\Big).
+    \label{eq:cond-generic}
+\end{equation}
+The mean drops $u_i$; only the variance carries it.
+
+\subsection{Posterior on $u$}
+
+Let $z_t^i := X_t^i - \hat x_0^i$ for any reference $\hat x_0$. From
+\eqref{eq:forward}, $z_t^i\mid u_i \sim \N(t u_i, \sigma^2 g(u_i) q(t))$, so
+\begin{equation}
+    p(u_i\mid z_t^i, t)\;\propto\;g(u_i)^{-1/2}\exp\!\left(-\frac{(z_t^i - t u_i)^2}{2\sigma^2 g(u_i)\,q(t)}\right).
+    \label{eq:post-generic}
+\end{equation}
+In $y=\asinh(u/\sqrt\lambda)$,
+\begin{equation}
+    \log p(y\mid z_t,t) \;=\; \tfrac{1}{2}\log\cosh y - \frac{(z_t - t\sqrt\lambda\sinh y)^2}{2\sigma^2\sqrt\lambda\cosh y\,q(t)} + \text{const}.
+    \label{eq:post-y}
+\end{equation}
+The $y$-posterior is unimodal across the operating range
+(Appendix~\ref{app:unimodal}), folding the bimodal $u$-posterior at
+small $|z_t|$ into a single mode at $y=0$.
+
+\subsection{Sampler A: finite-step bridge step (energy-score)}
+\label{sec:sampler-es}
+
+The energy-score loss \eqref{eq:energy} trains a head that approximates
+the full conditional $p(X_0\mid X_t)$. One head call returns one
+predictive draw $\hat x_0\sim p(X_0\mid X_t,t)$. The reverse step samples
+$x_s$ from the scale mixture
+$\int \N\big(\tfrac{t-s}{t}\hat x_0 + \tfrac{s}{t} x_t,\,\sigma^2 g(u)\tfrac{s(t-s)}{t}\big)\,p(u\mid z_t,t)\,du$
+hierarchically:
+\[
+    \hat x_0 \leftarrow \text{model}(x_t,t),\quad
+    \hat u_i \sim p(u_i\mid z_t^i,t),\quad
+    x_s^i \sim \N\big(\tfrac{t-s}{t}\hat x_0^i + \tfrac{s}{t} x_t^i,\,\sigma^2 g(\hat u_i)\,\tfrac{s(t-s)}{t}\big).
+\]
+We sample $\hat u_i$ by ratio-of-uniforms in the $y$-coordinate (Newton
+mode + bounding box; $\sim\!73\%$ acceptance, $\sim\!1.37$ proposals per
+sample). The step is exact at any $\Delta t$; smaller $\Delta t$ does
+not reduce a discretization error because there is none.
+
+\subsection{Sampler B: reverse-SDE Euler step (MSE)}
+\label{sec:sampler-mse}
+
+The MSE loss \eqref{eq:mse} trains only $m_g$. We discretize the
+reverse SDE \eqref{eq:rev-sde} with Euler:
+\begin{equation}
+    x_{k-1}^i \;=\; x_k^i + \Delta_k\,\frac{m_{\theta,i}(x_k,t_k) - x_k^i}{t_k}
+    + \sqrt{\Delta_k\,\widetilde a_i(x_k,t_k)}\,\xi_k^i,\quad \xi_k\sim\N(0,I_d),
+    \label{eq:euler}
+\end{equation}
+with diffusion $\widetilde a_i = \sigma^2 \E[g(U_i)\mid X_t=x_k]$
+computed sampler-side from the same posterior \eqref{eq:post-generic}.
+The drift error is $O(\Delta_k)$, so the sampler is consistent in the
+limit $\max_k\Delta_k\to 0$ and benefits from finer NFE.
+
+\subsection{Gauss--Legendre quadrature for $\E[g(U)\mid X_t=x]$ and any other expectation}
+\label{sec:quadrature}
+
+Substitute $x=\tanh(y/2)\in(-1,1)$ on top of the $y$-coordinate:
+$u = 2\sqrt\lambda\, x/(1-x^2)$, $g(u)=\sqrt\lambda\,(1+x^2)/(1-x^2)$, with
+Jacobian $dy/dx=2/(1-x^2)$. Including the Jacobian, the posterior
+density on $x\in[-1,1]$ is
+\begin{equation}
+    q_x(x)\;\propto\;\frac{2\sqrt{1+x^2}}{(1-x^2)^{3/2}}\exp\!\left(\frac{2 A x + C(1-x^2)}{1+x^2} - B\,\frac{1+x^2}{1-x^2}\right),
+    \label{eq:qx}
+\end{equation}
+$A = z_t/(\sigma^2(1-t))$, $B = t\sqrt\lambda/(\sigma^2(1-t))$,
+$C = (t\sqrt\lambda - z_t^2/(4t\sqrt\lambda))/(\sigma^2(1-t))$. The
+super-exponential decay $e^{-B(1+x^2)/(1-x^2)}$ at the boundaries makes
+a fixed Gauss--Legendre rule on $[-1,1]$ converge near-exponentially.
+For any $h$,
+\begin{equation}
+    \E[h(U)\mid z_t,t]\;\approx\;\frac{\sum_n w_n\,h(u(x_n))\,q_x(x_n)}{\sum_n w_n\,q_x(x_n)},
+    \label{eq:gl}
+\end{equation}
+with $\{(x_n,w_n)\}_{n=1}^N$ standard Legendre nodes/weights, evaluated
+in log-space for stability. We use $N=128$ throughout (sub-1\% error
+across the operating range; sub-$10^{-4}$ at $N=384$). Setting
+$h(u)=g(u)$ gives the diffusion in \eqref{eq:euler}; setting $h(u)=u$
+gives the empirical-prior posterior mean, etc.
+
+\section{Closed-form Bayes denoisers}
+\label{sec:bayes}
+
+For controlled comparisons we need the Bayes-optimal $m_g(x,t)$ in
+tractable special cases. Two of them are standard generative-modeling
+benchmarks: the Gaussian-to-Gaussian case (\S\ref{sec:bayes-gauss}) and
+the Gaussian-mixture case (\S\ref{sec:bayes-gmm}).
+
+\subsection{Gaussian--Gaussian, fixed bridge}
+\label{sec:bayes-gauss}
+
+Take $X_0,X_1\overset{\text{iid}}{\sim}\N(0,S)$ for some PSD $S$, fixed
+bridge $A=a_0 I$. Stack $Z=[X_0;\,U]$ with $U=X_1-X_0$. Then
+$Z\sim\N(0,\Sigma_Z)$ with $\Sigma_Z=\bigl(\begin{smallmatrix} S & -S \\ -S & 2S \end{smallmatrix}\bigr)$.
+With $H_t=[I,\,tI]$, $X_t = H_t Z + \sqrt{q(t) a_0}\,\varepsilon$, so
+\[
+    X_t\sim\N(0,\Sigma_t),\quad \Sigma_t = H_t \Sigma_Z H_t^\top + q(t) a_0 I = (1-2t+2t^2) S + q(t) a_0 I.
+\]
+The conditional mean is affine,
+\begin{equation}
+    \boxed{
+    m_{\text{fixed}}(x,t) \;=\; \Cov(X_0, X_t)\,\Sigma_t^{-1}\,x
+    \;=\; (1-t)\,S\,\big[(1-2t+2t^2)S + q(t)a_0 I\big]^{-1}\,x.
+    }
+    \label{eq:m-gauss-fixed}
+\end{equation}
+The conditional covariance is
+$\Sigma_{0\mid t} = S - (1-t)^2 S\Sigma_t^{-1} S$, so
+$R_g(t) = \tr\Sigma_{0\mid t}$.
+
+\subsection{Gaussian-mixture, fixed bridge}
+\label{sec:bayes-gmm}
+
+Take $X_0\sim\sum_c \pi_c^{0}\N(\mu_c^{0},\Sigma_c^{0})$ and
+$X_1\sim\sum_{c'}\pi_{c'}^{1}\N(\mu_{c'}^{1},\Sigma_{c'}^{1})$ from
+\emph{independent} component draws (independent coupling). Then for the
+fixed bridge,
+\[
+    p(c, c'\mid x_t) \;\propto\; \pi_c^{0}\pi_{c'}^{1}\,\N(x_t;\,\mu_{t,cc'},\,\Sigma_{t,cc'}),
+\]
+with $\mu_{t,cc'} = (1-t)\mu_c^{0} + t\mu_{c'}^{1}$ and
+$\Sigma_{t,cc'} = (1-t)^2\Sigma_c^{0} + t^2\Sigma_{c'}^{1} + q(t) a_0 I$.
+Within each $(c,c')$ pair $X_0\mid X_t$ is affine-Gaussian:
+\[
+    m_{cc'}(x,t) = \mu_c^{0} + \Cov(X_0,X_t\mid c,c')\,\Sigma_{t,cc'}^{-1}(x - \mu_{t,cc'}).
+\]
+Therefore
+\begin{equation}
+    \boxed{
+    m_{\text{fixed}}(x,t) \;=\; \sum_{c,c'} w_{cc'}(x,t)\, m_{cc'}(x,t),
+    \qquad
+    w_{cc'} = \frac{\pi_c^{0}\pi_{c'}^{1}\N(x;\,\mu_{t,cc'},\,\Sigma_{t,cc'})}{\sum_{d,d'} \pi_d^{0}\pi_{d'}^{1}\N(x;\,\mu_{t,dd'},\,\Sigma_{t,dd'})}.
+    }
+    \label{eq:m-gmm-fixed}
+\end{equation}
+The conditional covariance has the matching mixture form,
+\begin{equation}
+    \Sigma_{0\mid t}(x,t) = \sum_{cc'} w_{cc'}(x,t)\big[\Sigma_{0\mid t,cc'} + (m_{cc'}-m)(m_{cc'}-m)^\top\big],
+    \label{eq:cov-gmm}
+\end{equation}
+giving an exact $R_g(t)$ and $R_g^{\text{coupling}}(t)$ for the
+Gaussian-mixture benchmark.
+
+\subsection{Adaptive bridge: per-coordinate quadrature}
+\label{sec:bayes-adapt}
+
+For adaptive $g$ and component pair $(c,c')$, conditional on
+$(x_0, x_1)$ the bridge is still Gaussian per coordinate. The per-pair
+posterior over $u$ is the 1-D density \eqref{eq:post-generic}, evaluable
+by GL quadrature \eqref{eq:gl}. For axis-aligned (diagonal) $\Sigma_c$,
+the components decouple per coordinate and
+\begin{equation}
+    \boxed{
+    m_{\text{adapt}}^i(x,t) \;=\; \sum_{c,c'} w_{cc'}^{i}(x_i,t)\,
+    \E_{p(u_i\mid z_t^i, t,\, c, c')}\!\left[\,\tfrac{S_{R,cc'}^i}{V^i_{cc'}(u,t)}(x_i - \delta u) + \tfrac{u}{2}\,\right],
+    }
+    \label{eq:m-adapt-gmm}
+\end{equation}
+in the midpoint parameterisation $R = (X_0+X_1)/2$, $\delta = t-1/2$,
+$V_{cc'}^i(u,t) = S_{R,cc'}^i + q(t)\sigma^2 g(u)$, with
+$S_{R,cc'}^i = \tfrac14(\Sigma_c^{0,ii} + \Sigma_{c'}^{1,ii})$. The
+inner expectation is computed by \eqref{eq:gl} per coordinate per
+component pair; the outer sum is the same posterior over $(c,c')$ as
+\eqref{eq:m-gmm-fixed} but with the marginal $p(x_t\mid c,c')$ replaced
+by its $u$-marginalised counterpart (also a 1-D scale mixture
+computable by GL). For non-diagonal $\Sigma_c$, the per-coordinate
+decoupling fails and the integral is multivariate; we either project to
+a diagonal Bayes approximation or evaluate by Monte Carlo in $u$.
+
+\subsection{Use as oracle denoisers}
+\label{sec:oracle}
+
+Equations \eqref{eq:m-gmm-fixed}, \eqref{eq:m-adapt-gmm} expose the
+\emph{exact} Bayes denoiser as a closed-form/quadrature object. Implemented
+as torch modules with the same \texttt{sample(x\_t, t, $\dots$)} interface
+as the trained denoisers, they drop into the existing reverse samplers
+unchanged. This gives:
+\begin{itemize}
+    \item \textbf{Oracle Bayes sampling.} What is the upper bound on
+        sample quality given perfect denoising? Comparing oracle-fixed
+        vs oracle-adaptive isolates the contribution of the
+        \emph{integration dynamics} (\S\ref{sec:local-vol}) from the
+        function-fitting component.
+    \item \textbf{Distillation gap.} Train neural MSE denoisers against
+        the oracle target $m_g$; measure
+        $\E\|m_\theta - m_g\|^2$ and decompose the total error
+        \eqref{eq:bias-var} into bridge ($R_g$) and learning components.
+        This isolates the difficulty of \emph{learning} $m_g$ for fixed
+        vs adaptive $g$.
+\end{itemize}
+
+\section{Experiments}
+\label{sec:exp}
+
+\subsection{Reported runs (current)}
+
+Low-rank GMM benchmark: $k=5$ components, $d=50$, latent rank $20$,
+per-coordinate value range $[0,256]$, integer projection. $500$ training
+epochs, MLP denoiser, EMA, $3$ seeds. Forward processes:
+\begin{itemize}
+    \item Fixed Brownian: $\sigma=100$ (tuned).
+    \item Adaptive: $\sigma=1$, $\lambda=4096$.
+\end{itemize}
+Each training run is evaluated at NFE $\in\{10,100\}$ with the matched
+sampler from \S\ref{sec:reverse}.
+
+\begin{table}[t]
+    \centering
+    \small
+    \begin{tabular}{l@{\ }l rrrr}
+        \toprule
+        NFE & loss $\times$ bridge & energy dist. & 1-Wasserstein & MMD$_{\text{RBF}}$ & cov. Frob.\ err. \\
+        \midrule
+        \multirow{4}{*}{$10$}
+          & MSE, fixed-$\sigma$       & $8.06 \pm 0.25$  & $0.0316 \pm 0.001$   & $0.092 \pm 0.007$  & $0.113 \pm 0.002$  \\
+          & MSE, adaptive             & $1.07 \pm 0.32$  & $0.0115 \pm 0.0015$  & $0.056 \pm 0.016$  & $0.041 \pm 0.004$  \\
+          & ES, fixed-$\sigma$        & $0.064 \pm 0.011$& $0.00352 \pm 5e\text{-}6$ & $0.013 \pm 0.002$ & $0.0205 \pm 0.003$ \\
+          & ES, \textbf{adaptive}     & $\bm{0.018 \pm 0.003}$ & $\bm{0.00168 \pm 1e\text{-}4}$ & $\bm{0.0093 \pm 0.001}$ & $\bm{0.0090 \pm 4e\text{-}4}$ \\
+        \midrule
+        \multirow{4}{*}{$100$}
+          & MSE, fixed-$\sigma$       & $3.25 \pm 0.74$  & $0.0204 \pm 0.002$   & $0.070 \pm 0.012$  & $0.073 \pm 0.007$  \\
+          & MSE, adaptive             & $0.572 \pm 0.30$ & $0.00767 \pm 0.002$  & $0.044 \pm 0.021$  & $0.021 \pm 0.003$  \\
+          & ES, fixed-$\sigma$        & $0.111 \pm 0.025$& $0.00434 \pm 1e\text{-}4$ & $0.021 \pm 0.004$  & $0.024 \pm 0.003$  \\
+          & ES, adaptive              & $0.033 \pm 0.007$& $0.00206 \pm 2e\text{-}4$ & $0.012 \pm 0.001$  & $0.011 \pm 0.001$  \\
+        \bottomrule
+    \end{tabular}
+    \caption{Distributional metrics, mean $\pm$ std over $3$ seeds.
+        Bold: best over the $2{\times}2{\times}2$ grid.}
+    \label{tab:main}
+\end{table}
+
+Two robust patterns (Table~\ref{tab:main}):
+\begin{itemize}
+    \item \textbf{Adaptive uniformly improves over fixed-$\sigma$}, with
+        a $5\!-\!8\times$ gap on energy distance under MSE and
+        $3\!-\!4\times$ under energy score. The MSE gain is larger
+        because mean-only regression cannot compensate for noise
+        heterogeneity through the predictive head.
+    \item \textbf{ES prefers coarse NFE; MSE prefers fine NFE.}
+        $n=10\!\to\!100$ worsens ES by $\sim\!1.7\times$ (no
+        discretization error to refine, draw-noise stacks) and improves
+        MSE by $\sim\!2\times$ (Euler-SDE drift error halves).
+\end{itemize}
+
+\subsection{Planned ablations to pin down the mechanism}
+\label{sec:ablations}
+
+The current results show adaptive helps both losses at both NFEs but
+do not separate the mechanism (Bayes-MSE reduction vs local-volatility
+SDE vs robust coupling). Four matched experiments would resolve this.
+
+\paragraph{(A) Variance-matched fixed baseline.} Replace the tuned-$\sigma$
+fixed bridge with $\sigma_0$ chosen so that $a_0 = \E[\sigma^2 g(U)]$
+matches the adaptive bridge's average per-coordinate variance. (Also
+the median, as a robustness check.) If adaptive still wins, the gain
+cannot be charged to "less noise globally"; it must come from local
+volatility or learning-side function smoothness.
+
+\paragraph{(B) Oracle Bayes sampling.} Plug the closed-form denoisers
+\eqref{eq:m-gmm-fixed} and \eqref{eq:m-adapt-gmm} into the matched
+samplers (energy-score: bridge step with the oracle posterior;
+MSE-style: reverse SDE \eqref{eq:rev-sde} with the oracle drift and
+quadrature diffusion). This bounds sample quality from above given
+perfect denoising and isolates the contribution of the
+\emph{integration} (drift, diffusion, NFE) from the
+\emph{function-fitting} component. We expect the adaptive vs fixed gap
+to shrink (the irreducible Bayes risk is similar at matched variance),
+but not vanish (local volatility still differs).
+
+\paragraph{(C) Learning-only test.} Train neural MSE denoisers
+against the oracle $m_g$ rather than against $X_0$. The achievable
+$\E\|m_\theta - m_g\|^2$ measures function-approximation difficulty
+isolated from target noise. Report
+$(R_g, \E\|\nabla m_g\|^2, \E\|\nabla^2 m_g\|^2)$ alongside.
+
+\paragraph{(D) Coupling-cost test.} Compute the optimal Sinkhorn
+coupling under $c_{\text{fixed}}(u) = u^2/(2 g_0)$ and
+$c_{\text{adapt}}(u) = u^2/(2\sqrt{\lambda + u^2})$ at matched
+regularisation. Inspect whether the adaptive cost recovers
+long-range/heterogeneous pairings that quadratic OT discards. This
+tests the geometry interpretation of \S\ref{sec:coupling}
+independently of any generative training.
+
+\paragraph{(E) Bridge-vs-coupling decomposition of $R_g$.} Compute
+$R_g^{\text{bridge}}(t)$ and $R_g^{\text{coupling}}(t)$ over $t$ for
+fixed and adaptive (closed-form via \eqref{eq:cov-gmm} and quadrature
+respectively). Plot the $t$-profiles for both losses' relevant
+quantities ($Q_g, I_g, J_g$) for the SDE diagnostic.
+
+\section{Discussion}
+
+The construction has two hyperparameters: overall scale $\sigma$
+(controls bridge-noise magnitude uniformly) and crossover $\lambda$
+(controls the small-displacement floor and the transition to the
+linear-in-$|u|$ regime). Within an order of magnitude of the data scale,
+loss curves and downstream metrics are broadly flat in both.
+
+The flat prior on $u_i$ in \eqref{eq:post-generic} is a modelling
+choice; an empirical prior fit from training displacements is a drop-in
+substitute in the GL routine and should tighten posteriors where data
+concentrates.
+
+The matched-sampler design is more general than the specific $g$ chosen
+here. For any smooth $g$ whose posterior in the appropriate
+reparameterisation is near-Gaussian, the same recipe applies:
+energy-score head $\to$ finite-step bridge sampler with posterior $u$
+draw; MSE head $\to$ reverse-SDE Euler with quadrature-computed
+diffusion. The robust-coupling interpretation of \S\ref{sec:coupling}
+also holds for any $g$ via $c_g(u)=u^2/(2g(u))$, so $g$ is a knob on the
+implicit OT geometry.
+
+\appendix
+\section{Unimodality of the $y$-coordinate posterior}
+\label{app:unimodal}
+
+Computing $\partial_y^2\log p(y\mid z_t,t)|_{y=0}$ for \eqref{eq:post-y}
+gives
+$\tfrac{1}{8\lambda} - \tfrac{t}{2\sigma^2(1-t)\sqrt\lambda}$, which is
+negative iff
+\[
+    t\;\geq\;\frac{\sigma^2}{4\sqrt\lambda + \sigma^2}.
+\]
+For our settings ($\sigma=1$, $\lambda=4096$) this threshold is
+$\approx 0.0039$, below the smallest $t$ in either schedule. Off the
+axis ($z_t\ne 0$) the likelihood breaks the symmetry and unimodality
+extends.
+
+\section{Sketch of the small-noise coupling cost \eqref{eq:cg}}
+\label{app:cost}
+
+The Gaussian bridge marginal at $t=1/2$ has density (per coordinate)
+$p(x\mid x_0, x_1) \propto g(u)^{-1/2}\exp[-(x - \tfrac{x_0+x_1}{2})^2/(2\varepsilon g(u))]$
+with $\varepsilon = \sigma^2/4$. Reading the leading $\varepsilon\to 0$
+exponent at $x = (x_0+x_1)/2$ recovers
+$c_g(x_0, x_1) = \tfrac{1}{2}\sum_i u_i^2/g(u_i)$ as the small-noise
+Sinkhorn cost. The full Sinkhorn problem with kernel
+$K_\varepsilon(x_0,x_1)\propto\exp(-c_g/\varepsilon)$ admits the standard
+$\alpha\beta$-Sinkhorn factorisation under either source/target
+reference measures.
+
+\end{document}

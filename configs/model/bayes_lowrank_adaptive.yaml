@@ -1,0 +1,20 @@
+# Exact closed-form Bayes-optimal denoiser for the ADAPTIVE bridge on a
+# LowRank + isotropic GMM, via the (zeta, U) decomposition:
+#   - 2r-dim Gauss-Hermite quadrature over the latent zeta = (Z_0, Z_1)
+#   - 1-D Gauss-Hermite inner integral per coord over the per-coord U_i
+# No diagonal approximation; no Monte Carlo. Tractable for small r (r <= 3).
+# For r >= 4, use bayes_mc (stratified SNIS) instead.
+_target_: models.bayes.BayesDenoiserLowRankAdaptive
+
+k_src: ${dataset.k}
+k_tgt: ${dataset.k}
+r: ${dataset.latent_dim}
+d: ${dataset.data_dim}
+
+sigma: ${bridge.sigma}
+lam: ${bridge.lam}
+sigma0: ${dataset.noise_scale}
+
+mode: mean
+gh_n: 8        # outer quadrature: gh_n^{2r} nodes total
+u_n: 32        # inner 1-D quadrature per coord

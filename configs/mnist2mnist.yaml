@@ -1,0 +1,44 @@
+defaults:
+  - bridge: gaussian_bridge
+  - model: mse
+  - architecture: uvit_small_cond
+  - dataset: mnist2mnist
+  - training: default
+  - averaging: ema
+  - optimizer: adam
+  - scheduler: cosine
+  - slack_sampler: bessel
+  - _self_
+
+# Hydra configuration
+hydra:
+  job:
+    chdir: true
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+# Sensible defaults for continuous images in [-1, 1].
+bridge:
+  sigma: 1.0              # bridge noise magnitude in [-1, 1] units
+  homogeneous_time: false
+
+training:
+  num_epochs: 50
+  batch_size: 128
+  print_every: 5
+  save_every: 10
+  clip_grad_norm: 1.0
+
+# Global settings
+device: cuda
+seed: 42
+train_split: 0.9
+
+experiment:
+  name: "mnist2mnist"
+  version: "1.0"
+  description: "Conditional MNIST -> MNIST bridge with class label"
+
+logging:
+  level: INFO
+create_plots: false

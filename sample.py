@@ -52,8 +52,17 @@ def run_sampling_evaluation(
     if sum_conditioned:
         results_dir = results_dir / "sum_conditioned"
         results_dir.mkdir(exist_ok=True)
-    # Create results directory for this n_steps
-    results_dir = results_dir / f"n_steps={n_steps},n_epochs={n_epochs}"
+
+    # Include bridge sampler settings in subdir name so different (mode, eta)
+    # evaluations of the same trained checkpoint don't clobber each other.
+    suffix_parts = [f"n_steps={n_steps},n_epochs={n_epochs}"]
+    sampler_mode = getattr(bridge, "mode", None)
+    sampler_eta = getattr(bridge, "eta", None)
+    if sampler_mode is not None:
+        suffix_parts.append(f"mode={sampler_mode}")
+    if sampler_eta is not None:
+        suffix_parts.append(f"eta={sampler_eta}")
+    results_dir = results_dir / ",".join(suffix_parts)
     results_dir.mkdir(exist_ok=True)
     
     # Run evaluation

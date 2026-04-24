@@ -1,0 +1,11 @@
+# Bayes-optimal denoiser for the fixed-sigma Brownian bridge with independent
+# Gaussian-mixture coupling. Closed-form (no learnable parameters).
+# Buffers (means, covs, weights) are loaded from a checkpoint produced by
+# scripts/build_bayes_checkpoint.py for the matching dataset+sigma.
+_target_: models.bayes.BayesDenoiserGMMFixed
+
+k_src: ${dataset.k}
+k_tgt: ${dataset.k}
+d: ${dataset.data_dim}
+sigma: ${bridge.sigma}
+mode: mean   # 'mean' (MSE-style oracle) or 'sample' (ES-style oracle)

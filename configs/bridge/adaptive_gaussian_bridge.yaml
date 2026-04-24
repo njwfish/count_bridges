@@ -1,0 +1,20 @@
+# Skellam-matched Data-Adaptive Gaussian Bridge
+# Per-dim variance = sigma^2 * sqrt(4 lam + diff_i^2) * t(1-t)
+# With sigma=1, lam=1024 this matches the BesselM(lam_p=32, lam_m=32) Skellam bridge.
+_target_: bridges.torch.adaptive_gaussian_bridge.AdaptiveGaussianBridge
+
+sigma: 1.0
+lam: 1024.0
+t_eps: 1.0e-3
+homogeneous_time: false
+# Unified reverse sampler: (mode, eta) control, both sampler-only (excluded
+# from training config hash -- see utils.get_model_hash).
+#   mode='bridge': sample u from posterior (RoU), noise_var = sigma^2 * g(u_hat) * s*(t-s)/t.
+#                  Correct for distributional denoisers (energy_score).
+#   mode='sde'   : noise_var = sigma^2 * dt * E[g(U)|X_t=x] (GL quadrature).
+#                  Correct for mean-regression denoisers (mse).
+#   eta = 0      : deterministic drift step, same in both modes.
+#   eta = 1      : full sampler.
+mode: bridge
+eta: 1.0
+gl_n: 128  # Gauss-Legendre nodes for E[g(U)|x] quadrature (mode='sde' only).

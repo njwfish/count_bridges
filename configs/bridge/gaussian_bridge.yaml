@@ -1,0 +1,16 @@
+# Gaussian Brownian-Bridge Configuration
+# x_0 prediction + full-bridge step sampler (Gaussian analog of Skellam)
+_target_: bridges.torch.gaussian_bridge.GaussianBridge
+
+# Global scalar bridge noise magnitude (data-scale units)
+sigma: 1.0
+
+homogeneous_time: false
+# Unified reverse sampler: (mode, eta) control, both sampler-only (excluded
+# from training config hash -- see utils.get_model_hash).
+#   mode='bridge': finite-step bridge conditional (energy_score).
+#   mode='sde'   : reverse-SDE Euler (MSE / mean regression).
+#   eta = 0      : deterministic drift step (ODE-like), same in both modes.
+#   eta = 1      : full sampler in the selected mode.
+mode: bridge
+eta: 1.0

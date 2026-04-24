@@ -1,0 +1,26 @@
+# Stratified self-normalised importance-sampling (SNIS) Bayes denoiser.
+# Works for BOTH fixed and adaptive bridges (set `kind` accordingly); handles
+# arbitrary LowRank + isotropic GMM data without any diagonal approximation.
+# Fresh particles are drawn on every call from the analytic GMM (stratified
+# over component pairs for variance reduction).
+# Buffers (GMM params + projections) populated by
+# scripts/build_bayes_checkpoint.py from the dataset.
+_target_: models.bayes.BayesDenoiserMC
+
+# Shape-only args (interpolated from dataset config):
+k_src: ${dataset.k}
+k_tgt: ${dataset.k}
+r: ${dataset.latent_dim}
+d: ${dataset.data_dim}
+
+# Bridge hyperparameters (ADAPTIVE uses lam, FIXED ignores it):
+kind: fixed               # 'fixed' or 'adaptive'
+sigma: ${bridge.sigma}
+lam: 1024.0
+sigma0: ${dataset.noise_scale}
+
+# Stratified SNIS knobs
+n_per_pair: 4096          # particles drawn per (c, c') pair per call
+seed: 0
+
+mode: mean

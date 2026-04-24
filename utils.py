@@ -53,14 +53,35 @@ def get_model_hash(cfg: DictConfig, excluded_params: Optional[List[str]] = None)
     excluded_params = [
         # Hydra/experiment management
         'hydra', 'defaults', 'logging',
-        # Runtime parameters  
+        # Runtime parameters
         'device', 'create_plots',
         # Sampling parameters
         'n_steps', 'n_samples', 'sum_conditioned'
     ] + excluded_params
-    
+
     for param in excluded_params:
         config_copy.pop(param, None)
+
+    # Drop nested sampler-only params that don't affect training or the
+    # trained weights, so the same trained checkpoint can be re-used under
+    # different reverse samplers. Add more entries here as needed.
+    sampler_only_nested = [
+        # Unified (mode, eta) sampler controls -- sampler-only, not model.
+        ('bridge', 'mode'),
+        ('bridge', 'eta'),
+        # Legacy: kept for backward compat with older checkpoints.
+        ('bridge', 'stochastic'),
+        # AdaptiveGaussianBridge RoU / quadrature knobs -- sampler-only.
+        ('bridge', 'mode_steps'),
+        ('bridge', 'side_steps'),
+        ('bridge', 'rou_rounds'),
+        ('bridge', 'safety'),
+        ('bridge', 'gl_n'),
+        ('bridge', 't_eps'),
+    ]
+    for section, key in sampler_only_nested:
+        if section in config_copy and isinstance(config_copy[section], dict):
+            config_copy[section].pop(key, None)
     
     config_str = json.dumps(config_copy, sort_keys=True)
     return hashlib.md5(config_str.encode()).hexdigest()[:12]
