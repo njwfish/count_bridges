@@ -1,6 +1,8 @@
 #!/bin/bash
-# Stratified-SNIS oracle sweep on original-scale d=50 r=20 continuous GMM.
-# 2 bridge kinds x 3 seeds x 3 NFEs = 18 eval runs, plus 6 checkpoint builds.
+# IG-clocked vs fixed Bayes-oracle sweep on the d=50 r=20 continuous
+# LowRank-GMM benchmark. Each run: stratified-SNIS oracle (kind='fixed' or
+# kind='clocked') + matched reverse sampler ('sde' mode, eta=1.0). Sweep
+# is 2 bridge kinds x 3 seeds x 3 NFEs = 18 eval runs + 6 checkpoint builds.
 set -e
 cd "$(dirname "$0")"
 
@@ -10,8 +12,8 @@ NFES=(10 100 1000)
 log() { echo "[sweep $(date '+%H:%M:%S')] $*"; }
 
 build_and_eval() {
-  local kind=$1
-  local bridge_cfg=$2
+  local kind=$1                # SNIS oracle kind: 'fixed' or 'clocked'
+  local bridge_cfg=$2          # bridge yaml
   local bridge_overrides=$3
   local seed=$4
 
@@ -31,12 +33,13 @@ build_and_eval() {
   done
 }
 
-# Adaptive: default bridge sigma=1 lam=1024
+# IG-clocked: gamma=1, eta=64 matches the legacy heuristic adaptive bridge
+# at u=0 (with lam=1024).
 for seed in "${SEEDS[@]}"; do
-  build_and_eval adaptive adaptive_gaussian_bridge "" "${seed}"
+  build_and_eval clocked clocked_gaussian_bridge "" "${seed}"
 done
 
-# Fixed: bridge sigma=100 to match data scale
+# Fixed: bridge sigma=100 to match the data scale.
 for seed in "${SEEDS[@]}"; do
   build_and_eval fixed gaussian_bridge "bridge.sigma=100" "${seed}"
 done

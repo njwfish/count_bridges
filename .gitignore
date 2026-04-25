@@ -4,3 +4,12 @@
 *.so
 data/*.gtf
 data/*.fa
+# LaTeX notes (kept locally, not in git)
+adaptive_gaussian_bridge.tex
+*.aux
+*.log
+
+# Runtime artefacts
+outputs/
+logs/
+.claude/

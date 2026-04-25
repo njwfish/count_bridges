@@ -31,8 +31,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils import get_model_hash
 from models.bayes import (
     BayesDenoiserGMMFixed,
-    BayesDenoiserGMMAdaptive,
-    BayesDenoiserLowRankAdaptive,
     BayesDenoiserMC,
 )
 
@@ -61,33 +59,17 @@ def main(cfg: DictConfig):
         model = BayesDenoiserGMMFixed.from_dataset(
             dataset, sigma=cfg.bridge.sigma, mode=cfg.model.get('mode', 'mean')
         )
-    elif target.endswith("BayesDenoiserGMMAdaptive"):
-        model = BayesDenoiserGMMAdaptive.from_dataset(
-            dataset,
-            sigma=cfg.bridge.sigma,
-            lam=cfg.bridge.lam,
-            mode=cfg.model.get('mode', 'mean'),
-            gl_n=cfg.model.get('gl_n', 128),
-        )
-    elif target.endswith("BayesDenoiserLowRankAdaptive"):
-        # Exact 2r-dim quadrature oracle for small-r LowRank+isotropic GMM.
-        model = BayesDenoiserLowRankAdaptive.from_dataset(
-            dataset,
-            sigma=float(cfg.bridge.sigma),
-            lam=float(cfg.bridge.lam),
-            mode=cfg.model.get('mode', 'mean'),
-            gh_n=int(cfg.model.get('gh_n', 8)),
-            u_n=int(cfg.model.get('u_n', 32)),
-        )
     elif target.endswith("BayesDenoiserMC"):
         # Stratified SNIS over (c, c') pairs.
         kind = cfg.model.get('kind', 'fixed')
-        lam = float(cfg.bridge.get('lam', cfg.model.get('lam', 1024.0)))
+        gamma = float(cfg.bridge.get('gamma', cfg.model.get('gamma', 1.0)))
+        # Allow either `nu` (preferred) or fallback to `model.nu` for old configs.
+        nu = float(cfg.bridge.get('nu', cfg.model.get('nu', 64.0)))
         model = BayesDenoiserMC.from_dataset(
             dataset,
             kind=kind,
             sigma=float(cfg.bridge.sigma),
-            lam=lam,
+            gamma=gamma, nu=nu,
             n_per_pair=int(cfg.model.get('n_per_pair', 4096)),
             mode=cfg.model.get('mode', 'mean'),
             seed=int(cfg.model.get('seed', 0)),

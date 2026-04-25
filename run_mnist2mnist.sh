@@ -12,10 +12,11 @@ EPOCHS=${EPOCHS:-50}
 log() { echo "[mnist2mnist gpu=${CUDA_VISIBLE_DEVICES:-?} seed=${SEED} $(date '+%H:%M:%S')] $*"; }
 
 # Bridge params tuned for images in [-1, 1]:
-#   fixed:    sigma=1.0  (bridge noise std at t=0.5 -> 0.5, ~data scale)
-#   adaptive: sigma=1.0, lam=0.25  (matches avg var at u=0 to fixed; grows linearly at large u)
+#   fixed:   sigma=1.0  (bridge noise std at t=0.5 -> 0.5, ~data scale)
+#   clocked: sigma=1.0, gamma=1.0, nu=1.0
+#            matches heuristic adaptive at u=0 with lam=0.25 (nu = 2*sqrt(lam)).
 FIXED_BR="bridge=gaussian_bridge bridge.sigma=1.0"
-ADAPT_BR="bridge=adaptive_gaussian_bridge bridge.sigma=1.0 bridge.lam=0.25"
+CLOCK_BR="bridge=clocked_gaussian_bridge bridge.sigma=1.0 bridge.gamma=1.0 bridge.nu=1.0"
 
 # MSE cells (architecture = uvit_small_cond, no noise channel)
 run_mse() {
@@ -65,8 +66,8 @@ run_es() {
 }
 
 run_mse "${FIXED_BR}" "fixed"
-run_mse "${ADAPT_BR}" "adapt"
+run_mse "${CLOCK_BR}" "clock"
 run_es  "${FIXED_BR}" "fixed"
-run_es  "${ADAPT_BR}" "adapt"
+run_es  "${CLOCK_BR}" "clock"
 
 log "ALL 4 CELLS COMPLETE"

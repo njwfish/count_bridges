@@ -1,16 +1,14 @@
 """
 Run the Bayes oracle denoiser through the existing reverse sampler and
-report metrics. For the MSE-style ablation we use mode='mean' (returns the
-conditional mean E[X_0 | X_t]); for the energy-score-style ablation we
-would use mode='sample' (one draw from p(X_0 | X_t)) -- this script wires up
-the MSE case first.
+report metrics. mode='mean' returns the conditional mean E[X_0 | X_t]
+(the MSE-style ablation); mode='sample' returns one draw from p(X_0 | X_t).
 
 Bridge / sampler dispatch:
-  - GaussianBridge(sigma=...) with stochastic NOT applicable
-    (the sampler is the existing GaussianBridge.sample_step which is the
-    full bridge conditional given x_0_pred).
-  - AdaptiveGaussianBridge(sigma=..., lam=..., stochastic=False) -- use the
-    reverse-SDE Euler step with E[g(U)|x] from Gauss-Legendre quadrature.
+  - GaussianBridge(sigma=...): GaussianBridge.sample_step is the full
+    bridge conditional given x_0_pred (or the reverse-SDE Euler step
+    when mode='sde').
+  - ClockedGaussianBridge(sigma=..., gamma=..., eta=...): IG-clocked
+    bridge with mode='bridge' or mode='sde' (D_IG quadrature).
 
 Outputs metrics to outputs/oracle_<cell>_n<NFE>.yaml.
 """
@@ -28,8 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from datasets.gaussian_mixture import LowRankGaussianMixtureDataset
 from bridges.torch.gaussian_bridge import GaussianBridge
-from bridges.torch.adaptive_gaussian_bridge import AdaptiveGaussianBridge
-from models.bayes import BayesDenoiserGMMFixed, BayesDenoiserGMMAdaptive
+from bridges.torch.clocked_gaussian_bridge import ClockedGaussianBridge
+from models.bayes import BayesDenoiserGMMFixed, BayesDenoiserMC
 from evaluate import evaluate_model
 
 
@@ -51,34 +49,39 @@ def build_dataset(seed):
     )
 
 
-def build_oracle(bridge_kind, dataset, sigma, lam):
+def build_oracle(bridge_kind, dataset, sigma, gamma, nu):
     if bridge_kind == "fixed":
         return BayesDenoiserGMMFixed.from_dataset(dataset, sigma=sigma, mode="mean")
-    elif bridge_kind == "adaptive":
-        return BayesDenoiserGMMAdaptive.from_dataset(
-            dataset, sigma=sigma, lam=lam, mode="mean", gl_n=128
+    elif bridge_kind == "clocked":
+        return BayesDenoiserMC.from_dataset(
+            dataset, kind="clocked", sigma=sigma, gamma=gamma, nu=nu,
+            n_per_pair=4096, mode="mean", seed=0,
         )
     raise ValueError(bridge_kind)
 
 
-def build_bridge(bridge_kind, sigma, lam):
+def build_bridge(bridge_kind, sigma, gamma, nu):
     if bridge_kind == "fixed":
         # MSE-style: reverse-SDE mode (the Bayes oracle returns E[X_0|X_t]).
         return GaussianBridge(sigma=sigma, mode="sde", eta=1.0)
-    elif bridge_kind == "adaptive":
-        return AdaptiveGaussianBridge(sigma=sigma, lam=lam, mode="sde", eta=1.0)
+    elif bridge_kind == "clocked":
+        return ClockedGaussianBridge(sigma=sigma, gamma=gamma, nu=nu,
+                                     mode="sde", eta=1.0)
     raise ValueError(bridge_kind)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bridge", choices=["fixed", "adaptive"], required=True)
+    ap.add_argument("--bridge", choices=["fixed", "clocked"], required=True)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--n_steps", type=int, default=10)
     ap.add_argument("--n_samples", type=int, default=10000)
     ap.add_argument("--sigma", type=float, default=None,
-                    help="bridge noise scalar; default 100 for fixed, 1.0 for adaptive")
-    ap.add_argument("--lam", type=float, default=1024.0)
+                    help="bridge noise scalar; default 100 for fixed, 1.0 for clocked")
+    ap.add_argument("--gamma", type=float, default=1.0,
+                    help="IG-clock gamma (only for kind='clocked')")
+    ap.add_argument("--nu", type=float, default=64.0,
+                    help="IG-clock rate `nu` (the note's eta; only for kind='clocked')")
     ap.add_argument("--out_dir", type=str, default="outputs/bayes_oracle")
     args = ap.parse_args()
 
@@ -95,11 +98,11 @@ def main():
         generator=torch.Generator().manual_seed(args.seed),
     )
 
-    logging.info(f"Building bridge ({args.bridge}, sigma={args.sigma}, lam={args.lam})")
-    bridge = build_bridge(args.bridge, args.sigma, args.lam)
+    logging.info(f"Building bridge ({args.bridge}, sigma={args.sigma}, gamma={args.gamma}, nu={args.nu})")
+    bridge = build_bridge(args.bridge, args.sigma, args.gamma, args.nu)
 
     logging.info(f"Building Bayes oracle denoiser ({args.bridge}, mode='mean')")
-    oracle = build_oracle(args.bridge, dataset, args.sigma, args.lam).cuda()
+    oracle = build_oracle(args.bridge, dataset, args.sigma, args.gamma, args.nu).cuda()
 
     out_dir = Path(args.out_dir) / f"{args.bridge}_seed{args.seed}_n{args.n_steps}"
     out_dir.mkdir(parents=True, exist_ok=True)

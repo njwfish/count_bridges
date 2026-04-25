@@ -78,6 +78,10 @@ def get_model_hash(cfg: DictConfig, excluded_params: Optional[List[str]] = None)
         ('bridge', 'safety'),
         ('bridge', 'gl_n'),
         ('bridge', 't_eps'),
+        # ClockedGaussianBridge sampler-only knobs.
+        ('bridge', 'gig_n_rounds'),
+        ('bridge', 'gig_safety'),
+        ('bridge', 'n_quad'),
     ]
     for section, key in sampler_only_nested:
         if section in config_copy and isinstance(config_copy[section], dict):

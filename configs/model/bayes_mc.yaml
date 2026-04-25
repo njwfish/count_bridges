@@ -13,10 +13,16 @@ k_tgt: ${dataset.k}
 r: ${dataset.latent_dim}
 d: ${dataset.data_dim}
 
-# Bridge hyperparameters (ADAPTIVE uses lam, FIXED ignores it):
-kind: fixed               # 'fixed' or 'adaptive'
+# Bridge hyperparameters
+#   kind='fixed'   -- Var = sigma^2 t(1-t).
+#   kind='clocked' -- IG-clocked Gaussian bridge (uses gamma, nu).
+#                     `nu` is the note's `eta`, the IG-clock rate. We use
+#                     `nu` to avoid clashing with the codebase-wide `eta`
+#                     noise-multiplier on every bridge.
+kind: fixed
 sigma: ${bridge.sigma}
-lam: 1024.0
+gamma: 1.0
+nu: 64.0
 sigma0: ${dataset.noise_scale}
 
 # Stratified SNIS knobs
