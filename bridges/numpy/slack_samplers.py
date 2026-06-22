@@ -1,6 +1,20 @@
 import numpy as np
 from scipy.special import iv
 
+
+class ZeroM:
+    """Zero-slack sampler: lambda = 0, no extra Bessel noise.
+    Reduces the bridge to deterministic ``N_1 = |x_1 - x_0|`` thinned by the
+    binomial(t)/hypergeometric draws.
+    """
+
+    def __init__(self, markov: bool = True):
+        self.markov = markov
+
+    def __call__(self, diff: np.ndarray):
+        return np.zeros(diff.shape, dtype=diff.dtype)
+
+
 class ConstantM:
     def __init__(self, m: int, markov: bool = True):
         self.m = m

@@ -102,12 +102,17 @@ def compute_comprehensive_metrics(eval_data: Dict[str, Any]) -> Dict[str, float]
     """
     x0_target = eval_data['x0_target']
     x0_generated = eval_data['x0_generated']
-    
-    # Check if this is image data - if so, skip statistical metrics
-    if isinstance(x0_target, dict) or len(x0_target.shape) > 2:  # Image data has shape [N, C, H, W] or [N, H, W]
-        logger.info("Detected image data - skipping statistical metrics")
+
+    if isinstance(x0_target, dict):
+        logger.info("Detected dict-valued data - skipping statistical metrics")
         return None
-    
+
+    # Image data (N, C, H, W) or (N, H, W): flatten to (N, D) so the
+    # distributional metrics below still apply pixel-wise.
+    if x0_target.ndim > 2:
+        x0_target = x0_target.reshape(x0_target.shape[0], -1)
+        x0_generated = x0_generated.reshape(x0_generated.shape[0], -1)
+
     # Ensure same number of samples
     min_samples = min(len(x0_target), len(x0_generated))
     x0_target = x0_target[:min_samples]
