@@ -107,14 +107,16 @@ class OTPlanSamplerSparse:
 
         p = self.ot_fn(a, b, M)
         if not np.all(np.isfinite(p)):
-            print("ERROR: p is not finite")
-            print(p)
-            print("Cost mean, max", M.mean(), M.max())
-            print(x0, x1)
+            raise RuntimeError(
+                f"OT plan is not finite (cost mean={M.mean():.4g}, max={M.max():.4g}). "
+                f"Fail loud rather than silently degrading to uniform pairing."
+            )
         if np.abs(p.sum()) < 1e-8:
-            if self.warn:
-                warnings.warn("Numerical errors in OT plan, reverting to uniform plan.")
-            p = np.ones_like(p) / p.size
+            raise RuntimeError(
+                f"OT plan collapsed (sum={p.sum():.4g}, cost mean={M.mean():.4g}, "
+                f"max={M.max():.4g}). Was previously silently reverted to uniform — "
+                f"which is equivalent to random pairing across the batch."
+            )
         return p, M
 
     def sample_map(self, pi, batch_size, replace=True):
